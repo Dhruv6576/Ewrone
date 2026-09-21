@@ -12,6 +12,8 @@ tests/live/last_live_checkout.json
 !**/.env.example
 !**/.env.staging.example
 supabase/functions/.env
+*.local
+supabase/.admin-test.local
 
 # Build Artifacts & TypeScript cache
 *.tsbuildinfo
