@@ -24,14 +24,26 @@ if (!isProveMode) {
     process.exit(1);
   }
 
-  const committedContent = fs.readFileSync(TARGET_FILE, 'utf8');
-  const genOutput = execSync('npx supabase gen types typescript --local', { encoding: 'utf8' });
+  const committedContent = fs.readFileSync(TARGET_FILE, 'utf8').replace(/\r\n/g, '\n');
+  const genOutput = execSync('npx supabase gen types typescript --local', { encoding: 'utf8' }).replace(/\r\n/g, '\n');
 
   const committedHash = getHash(Buffer.from(committedContent, 'utf8'));
   const genHash = getHash(Buffer.from(genOutput, 'utf8'));
 
   if (committedHash !== genHash) {
     console.error('ERROR: Committed packages/shared/src/database.types.ts is out of date with database schema.');
+    console.error(`Committed hash: ${committedHash} (len ${committedContent.length})`);
+    console.error(`Generated hash: ${genHash} (len ${genOutput.length})`);
+    const cLines = committedContent.split('\n');
+    const gLines = genOutput.split('\n');
+    for (let i = 0; i < Math.max(cLines.length, gLines.length); i++) {
+      if (cLines[i] !== gLines[i]) {
+        console.error(`First diff at line ${i + 1}:`);
+        console.error(`  Committed: ${JSON.stringify(cLines[i])}`);
+        console.error(`  Generated: ${JSON.stringify(gLines[i])}`);
+        break;
+      }
+    }
     console.error("Run 'npm run gen:types' and commit the updated types.");
     process.exit(1);
   }
