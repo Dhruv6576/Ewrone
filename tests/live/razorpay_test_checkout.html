@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Razorpay Test Checkout - BK-36CC6765</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #1e293b; border-radius: 16px; padding: 32px; max-width: 480px; width: 100%; border: 1px solid #334155; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+    h1 { margin-top: 0; font-size: 22px; color: #38bdf8; }
+    .row { display: flex; justify-content: space-between; margin: 12px 0; padding-bottom: 12px; border-bottom: 1px solid #334155; font-size: 14px; }
+    .label { color: #94a3b8; }
+    .val { font-weight: 600; }
+    .total { font-size: 20px; color: #4ade80; font-weight: 700; border-bottom: none; margin-top: 16px; }
+    button { width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: background 0.2s; }
+    button:hover { background: #0369a1; }
+    .hint { font-size: 12px; color: #94a3b8; margin-top: 16px; line-height: 1.5; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🏏 Complete Test Turf Booking</h1>
+    <div class="row"><span class="label">Booking Reference:</span><span class="val">BK-36CC6765</span></div>
+    <div class="row"><span class="label">Booking ID:</span><span class="val" style="font-size:11px;">55754c28-1ef4-40f6-aa48-54d8d7829010</span></div>
+    <div class="row"><span class="label">Razorpay Order ID:</span><span class="val">order_TejlVbAIIU4byW</span></div>
+    <div class="row total"><span class="label" style="color:#4ade80;">Total Amount:</span><span>₹2000</span></div>
+
+    <button id="pay-btn">Pay with Razorpay Test Mode</button>
+
+    <div class="hint">
+      <strong>Test Payment Instructions:</strong><br>
+      • Click the button above to launch Razorpay Modal.<br>
+      • Select <strong>Card</strong>.<br>
+      • Use any Razorpay Test Card (e.g. <code>4111 1111 1111 1111</code>, expiry any future date like <code>12/28</code>, CVV: <code>123</code>).<br>
+      • Click Pay and enter any OTP (e.g. <code>123456</code>).<br>
+      • Once payment completes, Razorpay will dispatch a live webhook to:<br>
+      <code>your configured webhook endpoint (e.g. your ngrok tunnel or deployed Edge Function URL)</code>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('pay-btn').onclick = function() {
+      var options = {
+        key: "rzp_test_TehljHkxbdDR65",
+        amount: "200000",
+        currency: "INR",
+        name: "Box Cricket Platform",
+        description: "Booking BK-36CC6765",
+        order_id: "order_TejlVbAIIU4byW",
+        handler: function (response){
+          alert("Payment Successful! Razorpay Payment ID: " + response.razorpay_payment_id);
+          document.getElementById('pay-btn').innerText = "Payment Completed (" + response.razorpay_payment_id + ")";
+          document.getElementById('pay-btn').disabled = true;
+          document.getElementById('pay-btn').style.background = "#16a34a";
+        },
+        prefill: {
+          name: "Live Player",
+          email: "live_player@example.com",
+          contact: "+919999988888"
+        },
+        theme: { color: "#0284c7" }
+      };
+      var rzp1 = new Razorpay(options);
+      rzp1.open();
+    };
+  </script>
+</body>
+</html>

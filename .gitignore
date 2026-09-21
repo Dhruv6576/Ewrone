@@ -1,0 +1,27 @@
+# Root .gitignore for Box Codex
+*.dump
+*.sql.bak
+node_modules/
+.next/
+scratch/
+.tempmediaStorage/
+tests/live/last_live_checkout.json
+
+# Environment and Secret Files
+**/.env*
+!**/.env.example
+!**/.env.staging.example
+supabase/functions/.env
+
+# Build Artifacts & TypeScript cache
+*.tsbuildinfo
+.vercel/
+
+# Supabase temporary runtime files
+supabase/.temp/
+
+# Logs
+*.log
+
+# OS metadata
+.DS_Store

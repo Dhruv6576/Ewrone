@@ -1,0 +1,3 @@
+-- supabase/seed.sql
+-- Production seed file intentionally left blank for hosted deployment safety.
+-- Demo accounts, venues, and test fixtures are located in supabase/seed.local.sql.

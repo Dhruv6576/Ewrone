@@ -1,0 +1,10 @@
+# GitHub CODEOWNERS for Box Codex
+
+# Core platform and backend ownership
+/supabase/               @Dhruv6576
+/packages/shared/        @Dhruv6576
+/tests/                  @Dhruv6576
+/scripts/                @Dhruv6576
+
+# Frontend application ownership
+/apps/                   @Dhruv6576

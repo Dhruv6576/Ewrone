@@ -1,0 +1,2642 @@
+﻿
+Turf Booking Platform — Production Architecture and Implementation Plan
+Architecture baseline: Supabase + Flutter + Next.js/React
+Documentation checked: 17 September 2026
+Purpose: An implementation specification for a real multi-tenant booking business.
+Core recommendation: Build one shared, tenant-aware backend. Treat the Master Owner’s business account as the tenant, a turf as a managed venue, and a resource as the actual bookable ground/court. Employees receive explicit permissions on assigned turfs. Booking inventory, financial state transitions, and authorization must be enforced in Postgres—not in the applications.
+The SQL below defines the core schema and security patterns. The workflow specifications describe the stored procedures, Edge Functions, tests, and operational controls developers must implement around it. This is a design document, not a claim that the migrations have been executed or security-audited.
+
+1. Architectural decisions
+1.1 Resolve the product count
+You have six product surfaces, but technically four web applications, including the admin panel.
+#
+Surface
+Technology
+Intended user
+1
+web-player
+Next.js
+Players
+2
+app-player
+Flutter
+Players
+3
+web-owner
+Next.js
+Turf managers/employees
+4
+app-owner
+Flutter
+Turf managers/employees
+5
+web-master-owner
+Next.js
+Master Owners
+6
+web-admin
+Next.js/React
+Platform administrators
+This preserves your three commercial websites and adds the internal admin panel as a fourth web deployment.
+1.2 Decisions to adopt from the start
+Area
+Decision
+Reason
+Tenant boundary
+master_owner_id identifies a business account
+Supports multiple turfs without restructuring later
+Identity
+One Supabase Auth identity per human
+A player may also own a business or work at a turf
+Roles
+Business relationships, not one mutually exclusive role field
+Prevents role collisions and awkward account duplication
+Employees
+Business membership plus explicit turf assignments
+An employee never inherits access to every turf
+Permissions
+Capability records attached to assignments
+Avoids hardcoding permission combinations
+Inventory
+A bookable resource belongs to a turf
+One venue may contain two independently bookable grounds
+Double-booking protection
+Postgres exclusion constraint on active reservations
+Protects against overlapping intervals, including different start times
+Booking lifecycle
+Short-lived inventory hold followed by payment confirmation
+Prevents charging users for inventory never reserved
+Critical writes
+Transactional Postgres RPC functions
+Multiple SDK calls are not one transaction
+External integrations
+Supabase Edge Functions
+Keeps gateway credentials and integration logic server-side
+Payments
+Gateway payment records plus an internal financial ledger
+Payment success is not the same as owner settlement
+Async work
+Transactional outbox and bounded background workers
+Durable retries without relying on a request staying alive
+Realtime
+Cache invalidation and status updates
+It is not a lock or the source of truth
+Repository
+Monorepo with independent application deployments
+Shared contracts and consistent backend changes
+Launch scope
+Multi-turf tenancy and employee permissions in MVP
+These are foundational, not optional polish
+Do not launch with a schema that assumes one owner equals one turf. You can onboard only a few single-turf businesses initially, but the data model should already support multiple turfs.
+
+2. Domain model and role hierarchy
+2.1 Distinguish people, businesses, venues, and inventory
+Supabase Auth user
+    |
+    +-- Player profile
+    |
+    +-- Owns Master Owner business account
+    |       |
+    |       +-- Turf A
+    |       |     +-- Resource A1: Main cricket ground
+    |       |     +-- Resource A2: Practice net
+    |       |
+    |       +-- Turf B
+    |             +-- Resource B1: Box cricket ground
+    |
+    +-- Employee membership in a business account
+    |       |
+    |       +-- Assignment to Turf A
+    |       |     +-- Allowed capabilities
+    |       |
+    |       +-- Assignment to Turf B
+    |             +-- Different allowed capabilities
+    |
+    +-- Platform administrator membership
+A Master Owner record represents the business account, not merely a different kind of Auth user.
+A turf represents a venue. A resource represents exclusive inventory.
+For a simple venue with one ground, create one default resource. This adds little UI complexity while avoiding a future inventory migration.
+2.2 Role model
+Business role
+Authoritative relationship
+Scope
+Player
+players.user_id
+Their own bookings and profile
+Master Owner
+master_owners.owner_user_id
+Their business and all its turfs
+Employee
+employees.user_id plus active assignments
+Explicitly assigned turfs
+Platform Admin
+private.platform_admins.user_id plus capabilities
+Explicit platform operations
+Do not change the JWT’s standard role claim to master_owner or employee. Ordinary signed-in users remain the Supabase/Postgres authenticated role.
+Business authorization is separate from the database connection role.
+JWT metadata may contain coarse navigation hints, but database membership and permission records remain authoritative. Never authorize business operations using user-editable user_metadata.
+2.3 Relationship cardinalities
+Relationship
+Cardinality
+Auth user → Master Owner accounts
+One-to-many supported
+Master Owner account → Turfs
+One-to-many
+Master Owner account → Employee memberships
+One-to-many
+Employee membership ↔ Turfs
+Many-to-many through assignments
+Assignment → Granted capabilities
+One-to-many
+Turf → Resources
+One-to-many
+Resource → Published slots
+One-to-many
+Booking → Payments
+One-to-many
+Master Owner → Settlement destination
+Normally one active destination per gateway/currency
+An employee can have separate memberships in two businesses if necessary. Permissions never carry across those memberships.
+
+3. System architecture
+3.1 Recommended backend shape
+Use a modular monolith inside Supabase, not six separate backends and not an additional general-purpose API server initially.
+Diagram preview
+Player website
+Supabase Auth
+Player app
+Employee website
+Employee app
+Master Owner website
+Admin panel
+Supabase Data API and RPC
+Supabase Edge Functions
+Postgres constraints RLS and transactions
+Payment gateway
+Webhook Edge Function
+Transactional outbox
+OUT
+Scheduled Edge workers
+Push SMS and email providers
+Supabase Realtime
+Supabase Storage
+3.2 Which access path to use
+Operation
+Access path
+Enforcement
+Read approved turf catalogue
+SDK/Data API or Next.js server-side read
+Public-safe projection and RLS
+Search available turfs
+Read RPC
+Bounded query, server-side availability calculation
+Read own booking history
+SDK/Data API
+RLS
+Read employee booking calendar
+SDK/Data API or read RPC
+Turf capability checks
+Create inventory hold
+Transactional RPC
+Authorization, pricing, exclusion constraint
+Change pricing
+Transactional RPC
+Capability check, version check, audit
+Block a slot
+Transactional RPC
+Capability check and inventory constraint
+Start gateway checkout
+Edge Function
+Verified user, server-created order
+Process webhook
+Edge Function → private DB routine
+Gateway signature and idempotency
+Request refund
+User RPC → durable job → Edge worker
+Permission, policy, amount limits
+Invite employee
+Edge Function plus DB routines
+Master Owner authorization and Auth Admin API
+Change bank account
+Edge Function workflow
+MFA, owner authority, gateway verification
+Fetch owner analytics
+Read RPC/aggregate tables
+Tenant scope
+Upload turf photo
+Storage SDK with RLS
+Authorized path and listing permissions
+Deliver notifications
+Background Edge worker
+Outbox and delivery deduplication
+Why not put all logic in Next.js?
+The mobile applications need exactly the same business rules. A Next.js-only implementation tends to create separate mobile APIs and inconsistent authorization.
+Next.js route handlers can act as thin web-specific adapters, but they must not become a second source of truth.
+Why not put everything in Edge Functions?
+Edge Functions are appropriate for network calls, webhook validation, and orchestration. They do not make several independent Data API calls atomic.
+Transactions belong in one Postgres routine. External network calls belong outside that transaction.
+3.3 Layer responsibilities
+Layer
+Responsibilities
+Must not be trusted for
+Flutter/React UI
+Form validation, optimistic display, permission-aware navigation
+Final price, authorization, availability
+Shared client packages
+Typed contracts, formatting, query keys, UI permission hints
+Security enforcement
+Edge Functions
+Authentication, rate limits, provider calls, webhook signatures
+Replacing database invariants
+Postgres routines
+Business transitions, capability checks, pricing snapshots, atomic changes
+Long-running external calls
+RLS
+Row visibility and allowed data access
+Field-level business transition rules by itself
+Constraints/triggers
+Tenant consistency, overlap prevention, audit, ledger integrity
+User interaction
+Background workers
+Retryable external effects and reconciliation
+Unbounded execution
+
+4. Authentication and permissions
+4.1 Authentication by surface
+Surface
+Authentication approach
+Player website
+Supabase Auth; phone OTP and/or email authentication
+Player app
+Same Supabase project; PKCE/deep-link flows where applicable
+Employee website
+Invited identities; password/email login; MFA for elevated capabilities
+Employee app
+Same employee identity and permissions as website
+Master Owner website
+Verified identity; MFA required for financial/security actions
+Admin panel
+Invite-only; mandatory MFA; restricted operational access
+For Next.js, use the current @supabase/ssr integration and server-side verified authentication. Do not trust the user object from an unverified session cookie. Follow Supabase’s current SSR guidance for token refresh and verified claims. [S3]
+For Flutter, configure secure session persistence using OS-backed secure storage for sensitive tokens. Do not assume ordinary preference storage is appropriate.
+One Auth project does not automatically mean one shared browser session across all websites. Prefer isolated host-scoped sessions, especially for admin. Do not place a shared parent-domain authentication cookie across public and privileged sites merely for convenience.
+4.2 Capability catalogue
+Use stable strings rather than one boolean column for each permission.
+Capability
+Scope
+Purpose
+turf.read
+Turf
+View operational turf details
+listing.edit
+Turf
+Edit permitted listing information
+calendar.read
+Turf
+View operational calendar
+slots.block
+Turf
+Create/remove operational blocks
+pricing.read
+Turf
+View internal pricing rules
+pricing.edit
+Turf
+Change pricing rules
+bookings.read
+Turf
+View bookings
+bookings.create_walkin
+Turf
+Create offline/walk-in bookings
+bookings.manage
+Turf
+Check in players and manage operational details
+bookings.cancel
+Turf
+Cancel bookings under allowed policy
+bookings.reschedule
+Turf
+Move bookings under allowed policy
+payments.record_offline
+Turf
+Record authorized cash/offline collections
+refunds.request
+Turf
+Request a refund for a turf booking
+refunds.issue
+Turf
+Authorize a refund within configured limits
+finance.read
+Turf
+Read the assigned turf’s financial reporting
+analytics.read
+Turf
+Read the assigned turf’s analytics
+audit.read
+Turf
+Read the assigned turf’s activity
+payouts.read
+Owner account
+Read consolidated owner settlement information
+payouts.request
+Owner account
+Request release of eligible settlements
+Bank destination changes and employee permission administration should remain Master Owner-only at launch. Do not allow an employee with refunds.issue to change the beneficiary bank account.
+view_only should be a preset, not another permission bit
+View only means a set of read capabilities with no write capabilities.
+Do not maintain both view_only = true and can_edit_pricing = true, because their precedence becomes ambiguous.
+Suggested UI presets:
+Preset
+Behavior
+Viewer
+Read-only operational access
+Booking operator
+Booking operations without pricing or refunds
+Turf manager
+Calendar, bookings, and pricing
+Finance viewer
+Assigned-turf financial reports
+Custom
+Explicit capability selection
+Store the expanded grants. Presets simplify the UI; they do not replace the underlying grants.
+4.3 Permission evaluation
+For turf-scoped operations:
+ALLOW only when:
+user is the active Master Owner of this turf's business
+OR
+employee membership is active
+    AND membership belongs to this turf's business
+    AND assignment to this exact turf is active
+    AND assignment grants the requested capability
+Platform administration is a separate path. Do not silently make every admin pass every owner permission helper.
+For owner-account financial access, use separate explicit account grants. A turf assignment alone must never reveal consolidated revenue from unassigned turfs.
+4.4 Employee invitation lifecycle
+Step
+Action
+1
+Master Owner enters employee email, assignments, and permissions
+2
+DB creates a pending invitation tied to that business
+3
+Edge Function sends an invite or acceptance link
+4
+Employee authenticates and accepts using a verified identity
+5
+DB verifies invitation expiry, recipient, and requesting business
+6
+DB creates/activates membership and assignments atomically
+7
+Audit records the inviter, recipient, and grants
+Do not assign permissions merely because a caller supplies an email address or user_id.
+Do not create employee accounts with shared passwords.
+Disabling an employee should revoke the membership immediately for new database requests without disabling their unrelated player account.
+
+5. Database schema
+5.1 Schema conventions
+Convention
+Decision
+Primary identifiers
+UUIDs
+Money
+bigint minor units; INR paise
+Currency
+Explicit three-letter currency code
+Instants
+timestamptz
+Venue timezone
+IANA timezone, initially Asia/Kolkata
+Time intervals
+Half-open intervals: [start, end)
+Tenant references
+Explicit master_owner_id on tenant-owned transactional records
+Deletion
+Archive businesses/turfs; retain booking and financial history
+Privileged internals
+Non-exposed private schema
+API-visible data
+public tables/projections with explicit grants and RLS
+User identity
+Foreign keys to auth.users; avoid cascading financial history deletion
+The following is the core relational schema. SQL functions, policies, seeds, and triggers are separate migrations.
+5.2 Identity, tenant, and authorization tables
+create schema if not exists private;
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
+create extension if not exists postgis with schema extensions;
+create table public.profiles (
+  user_id uuid primary key references auth.users(id),
+  display_name text not null,
+  avatar_path text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create table public.players (
+  user_id uuid primary key references public.profiles(user_id),
+  preferred_timezone text not null default 'Asia/Kolkata',
+  created_at timestamptz not null default now()
+);
+create table public.master_owners (
+  id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid not null references public.profiles(user_id),
+  business_name text not null,
+  status text not null default 'onboarding'
+    check (status in ('onboarding', 'active', 'suspended', 'archived')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index master_owners_owner_user_idx
+  on public.master_owners(owner_user_id);
+create table public.employees (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null references public.master_owners(id),
+  user_id uuid not null references public.profiles(user_id),
+  status text not null default 'active'
+    check (status in ('active', 'disabled')),
+  permission_version bigint not null default 1,
+  created_at timestamptz not null default now(),
+  unique (master_owner_id, user_id),
+  unique (id, master_owner_id)
+);
+create index employees_user_status_idx
+  on public.employees(user_id, status, master_owner_id);
+create table private.capabilities (
+  code text primary key,
+  scope text not null check (scope in ('turf', 'owner')),
+  description text not null,
+  unique (code, scope)
+);
+create table private.platform_admins (
+  user_id uuid primary key references public.profiles(user_id),
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create table private.admin_grants (
+  user_id uuid not null references private.platform_admins(user_id),
+  capability text not null,
+  primary key (user_id, capability)
+);
+create table private.employee_invites (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null references public.master_owners(id),
+  normalized_email text not null,
+  token_hash text not null unique,
+  proposed_assignments jsonb not null,
+  invited_by uuid not null references public.profiles(user_id),
+  expires_at timestamptz not null,
+  accepted_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+proposed_assignments is acceptable as an invitation payload. On acceptance, validate every turf and capability and expand it into normalized assignment/grant rows.
+5.3 Turfs, resources, assignments, and listing configuration
+create table public.turfs (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null references public.master_owners(id),
+  slug text not null unique,
+  name text not null,
+  description text not null default '',
+  address_text text not null,
+  city text not null,
+  location extensions.geography(Point, 4326) not null,
+  timezone text not null default 'Asia/Kolkata',
+  approval_status text not null default 'draft'
+    check (
+      approval_status in (
+        'draft', 'pending', 'approved', 'rejected', 'suspended'
+      )
+    ),
+  archived_at timestamptz,
+  version bigint not null default 1,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (id, master_owner_id)
+);
+create index turfs_owner_idx on public.turfs(master_owner_id);
+create index turfs_location_idx on public.turfs using gist(location);
+create index turfs_public_city_idx
+  on public.turfs(city, approval_status)
+  where archived_at is null;
+create table public.resources (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null,
+  turf_id uuid not null,
+  name text not null,
+  active boolean not null default true,
+  booking_increment_minutes integer not null default 30
+    check (booking_increment_minutes > 0),
+  minimum_duration_minutes integer not null default 60
+    check (minimum_duration_minutes > 0),
+  maximum_duration_minutes integer not null default 240,
+  foreign key (turf_id, master_owner_id)
+    references public.turfs(id, master_owner_id),
+  check (maximum_duration_minutes >= minimum_duration_minutes),
+  unique (id, turf_id, master_owner_id)
+);
+create index resources_turf_idx on public.resources(turf_id);
+create table public.employee_turf_assignments (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null,
+  employee_id uuid not null,
+  turf_id uuid not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  foreign key (employee_id, master_owner_id)
+    references public.employees(id, master_owner_id),
+  foreign key (turf_id, master_owner_id)
+    references public.turfs(id, master_owner_id),
+  unique (employee_id, turf_id),
+  unique (id, master_owner_id)
+);
+create index assignments_turf_employee_idx
+  on public.employee_turf_assignments(turf_id, employee_id)
+  where active;
+create table private.assignment_grants (
+  assignment_id uuid not null
+    references public.employee_turf_assignments(id),
+  capability text not null,
+  scope text not null default 'turf' check (scope = 'turf'),
+  max_amount_minor bigint check (max_amount_minor >= 0),
+  foreign key (capability, scope)
+    references private.capabilities(code, scope),
+  primary key (assignment_id, capability)
+);
+create table private.employee_owner_grants (
+  employee_id uuid not null references public.employees(id),
+  capability text not null,
+  scope text not null default 'owner' check (scope = 'owner'),
+  foreign key (capability, scope)
+    references private.capabilities(code, scope),
+  primary key (employee_id, capability)
+);
+create table public.sports (
+  code text primary key,
+  name text not null
+);
+create table public.resource_sports (
+  resource_id uuid not null references public.resources(id),
+  sport_code text not null references public.sports(code),
+  primary key (resource_id, sport_code)
+);
+create table public.amenities (
+  code text primary key,
+  name text not null
+);
+create table public.turf_amenities (
+  turf_id uuid not null references public.turfs(id),
+  amenity_code text not null references public.amenities(code),
+  primary key (turf_id, amenity_code)
+);
+create table public.turf_photos (
+  id uuid primary key default gen_random_uuid(),
+  turf_id uuid not null references public.turfs(id),
+  storage_path text not null unique,
+  sort_order integer not null default 0,
+  published boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create table public.operating_hours (
+  id uuid primary key default gen_random_uuid(),
+  resource_id uuid not null references public.resources(id),
+  iso_weekday integer not null check (iso_weekday between 1 and 7),
+  opens_at time not null,
+  closes_at time not null,
+  closes_next_day boolean not null default false,
+  valid_from date not null,
+  valid_until date,
+  check (valid_until is null or valid_until >= valid_from)
+);
+create table public.operating_exceptions (
+  id uuid primary key default gen_random_uuid(),
+  resource_id uuid not null references public.resources(id),
+  local_date date not null,
+  closed boolean not null,
+  override_periods jsonb,
+  reason text,
+  unique (resource_id, local_date)
+);
+create table public.pricing_rules (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null,
+  turf_id uuid not null,
+  resource_id uuid not null,
+  priority integer not null,
+  valid_from date not null,
+  valid_until date,
+  iso_weekdays smallint[] not null,
+  starts_local time not null,
+  ends_local time not null,
+  amount_per_increment_minor bigint not null
+    check (amount_per_increment_minor >= 0),
+  currency text not null default 'INR',
+  active boolean not null default true,
+  version bigint not null default 1,
+  foreign key (resource_id, turf_id, master_owner_id)
+    references public.resources(id, turf_id, master_owner_id),
+  check (valid_until is null or valid_until >= valid_from)
+);
+create index pricing_rules_resource_idx
+  on public.pricing_rules(resource_id, active, valid_from);
+create table public.cancellation_policies (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null references public.master_owners(id),
+  name text not null,
+  version integer not null,
+  rules jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (master_owner_id, name, version),
+  unique (id, master_owner_id)
+);
+create table public.turf_booking_settings (
+  turf_id uuid primary key,
+  master_owner_id uuid not null,
+  cancellation_policy_id uuid not null,
+  advance_basis_points integer not null default 10000
+    check (advance_basis_points between 1 and 10000),
+  booking_horizon_days integer not null default 60
+    check (booking_horizon_days between 1 and 365),
+  minimum_lead_minutes integer not null default 60
+    check (minimum_lead_minutes >= 0),
+  hold_seconds integer not null default 420
+    check (hold_seconds between 60 and 1200),
+  foreign key (turf_id, master_owner_id)
+    references public.turfs(id, master_owner_id),
+  foreign key (cancellation_policy_id, master_owner_id)
+    references public.cancellation_policies(id, master_owner_id)
+);
+Important: Validate timezone names, rule JSON schemas, weekday arrays, and operating-hour consistency in mutation routines. JSONB is for structured policy documents, not a substitute for relational ownership constraints.
+5.4 Slots, bookings, and exclusive inventory
+Separate sellable schedule units from inventory occupation.
+slots defines published calendar units.
+inventory_allocations determines whether time is currently reserved.
+create table public.slots (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null,
+  turf_id uuid not null,
+  resource_id uuid not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  published boolean not null default true,
+  schedule_version bigint not null,
+  foreign key (resource_id, turf_id, master_owner_id)
+    references public.resources(id, turf_id, master_owner_id),
+  check (ends_at > starts_at),
+  unique (resource_id, starts_at),
+  unique (id, resource_id, turf_id, master_owner_id)
+);
+create index slots_resource_time_idx
+  on public.slots(resource_id, starts_at, ends_at);
+create table public.bookings (
+  id uuid primary key default gen_random_uuid(),
+  reference_code text not null unique,
+  master_owner_id uuid not null,
+  turf_id uuid not null,
+  resource_id uuid not null,
+  player_user_id uuid references public.players(user_id),
+  created_by uuid not null references public.profiles(user_id),
+  source text not null check (source in ('online', 'walkin')),
+  status text not null default 'held'
+    check (
+      status in (
+        'held', 'confirmed', 'cancelled', 'expired',
+        'completed', 'no_show', 'payment_exception'
+      )
+    ),
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  hold_expires_at timestamptz,
+  total_minor bigint not null check (total_minor >= 0),
+  required_online_minor bigint not null check (required_online_minor >= 0),
+  currency text not null default 'INR',
+  pricing_snapshot jsonb not null,
+  cancellation_snapshot jsonb not null,
+  commission_snapshot jsonb not null,
+  version bigint not null default 1,
+  created_at timestamptz not null default now(),
+  confirmed_at timestamptz,
+  cancelled_at timestamptz,
+  foreign key (resource_id, turf_id, master_owner_id)
+    references public.resources(id, turf_id, master_owner_id),
+  check (ends_at > starts_at),
+  check (required_online_minor <= total_minor),
+  check (source <> 'online' or player_user_id is not null),
+  check (status <> 'held' or hold_expires_at is not null),
+  unique (id, master_owner_id),
+  unique (id, resource_id, turf_id, master_owner_id)
+);
+create index bookings_player_history_idx
+  on public.bookings(player_user_id, created_at desc);
+create index bookings_turf_calendar_idx
+  on public.bookings(turf_id, starts_at, status);
+create index bookings_owner_history_idx
+  on public.bookings(master_owner_id, created_at desc);
+create index bookings_expiry_idx
+  on public.bookings(hold_expires_at)
+  where status = 'held';
+create table public.booking_slots (
+  booking_id uuid not null,
+  slot_id uuid not null,
+  resource_id uuid not null,
+  turf_id uuid not null,
+  master_owner_id uuid not null,
+  quoted_amount_minor bigint not null check (quoted_amount_minor >= 0),
+  foreign key (booking_id, resource_id, turf_id, master_owner_id)
+    references public.bookings(id, resource_id, turf_id, master_owner_id),
+  foreign key (slot_id, resource_id, turf_id, master_owner_id)
+    references public.slots(id, resource_id, turf_id, master_owner_id),
+  primary key (booking_id, slot_id)
+);
+create table public.inventory_allocations (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null,
+  turf_id uuid not null,
+  resource_id uuid not null,
+  booking_id uuid,
+  kind text not null check (kind in ('hold', 'booking', 'block')),
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  occupied_period tstzrange generated always as (
+    tstzrange(starts_at, ends_at, '[)')
+  ) stored,
+  expires_at timestamptz,
+  released_at timestamptz,
+  reason text,
+  created_by uuid references public.profiles(user_id),
+  created_at timestamptz not null default now(),
+  foreign key (resource_id, turf_id, master_owner_id)
+    references public.resources(id, turf_id, master_owner_id),
+  foreign key (booking_id, resource_id, turf_id, master_owner_id)
+    references public.bookings(id, resource_id, turf_id, master_owner_id),
+  check (ends_at > starts_at),
+  check (
+    (kind = 'block' and booking_id is null)
+    or
+    (kind in ('hold', 'booking') and booking_id is not null)
+  ),
+  check (kind <> 'hold' or expires_at is not null)
+);
+-- Ensure the migration search_path includes the schema containing
+-- btree_gist operator classes when adding this constraint.
+set search_path = public, extensions;
+alter table public.inventory_allocations
+  add constraint inventory_no_overlap
+  exclude using gist (
+    resource_id with =,
+    occupied_period with &&
+  )
+  where (released_at is null);
+reset search_path;
+create unique index inventory_one_active_allocation_per_booking
+  on public.inventory_allocations(booking_id)
+  where booking_id is not null and released_at is null;
+create index inventory_expiring_holds_idx
+  on public.inventory_allocations(expires_at)
+  where released_at is null and kind = 'hold';
+create table private.booking_contacts (
+  booking_id uuid primary key references public.bookings(id),
+  contact_name text not null,
+  contact_phone text,
+  contact_email text,
+  retention_until timestamptz
+);
+create table public.booking_events (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null references public.bookings(id),
+  event_type text not null,
+  public_summary text not null,
+  created_at timestamptz not null default now()
+);
+create table private.offline_collections (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null references public.bookings(id),
+  amount_minor bigint not null check (amount_minor > 0),
+  method text not null check (method in ('cash', 'external_transfer')),
+  recorded_by uuid not null references public.profiles(user_id),
+  receipt_reference text,
+  reversal_of uuid references private.offline_collections(id),
+  created_at timestamptz not null default now()
+);
+The allocation constraint prevents overlapping holds, bookings, and maintenance blocks through the same mechanism.
+PostgreSQL range exclusion constraints are designed for this class of non-overlapping reservation problem. [S4]
+5.5 Payments, refunds, owner destinations, and payouts
+Raw financial/provider records belong in private. Return role-appropriate projections through authorized read routines.
+create table private.payment_orders (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null,
+  master_owner_id uuid not null,
+  purpose text not null
+    check (purpose in ('initial', 'balance', 'reschedule')),
+  provider text not null,
+  provider_order_id text,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency text not null default 'INR',
+  status text not null default 'creating'
+    check (
+      status in (
+        'creating', 'ready', 'paid', 'expired',
+        'failed', 'creation_unknown'
+      )
+    ),
+  idempotency_key text not null unique,
+  created_at timestamptz not null default now(),
+  foreign key (booking_id, master_owner_id)
+    references public.bookings(id, master_owner_id),
+  unique (provider, provider_order_id)
+);
+create table private.payments (
+  id uuid primary key default gen_random_uuid(),
+  payment_order_id uuid not null references private.payment_orders(id),
+  provider text not null,
+  provider_payment_id text not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency text not null,
+  status text not null
+    check (
+      status in (
+        'pending', 'authorized', 'captured',
+        'failed', 'partially_refunded', 'refunded'
+      )
+    ),
+  captured_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (provider, provider_payment_id)
+);
+create table private.refunds (
+  id uuid primary key default gen_random_uuid(),
+  payment_id uuid not null references private.payments(id),
+  amount_minor bigint not null check (amount_minor > 0),
+  reason text not null,
+  requested_by uuid references public.profiles(user_id),
+  approved_by uuid references public.profiles(user_id),
+  provider_refund_id text,
+  status text not null default 'requested'
+    check (
+      status in (
+        'requested', 'approved', 'processing',
+        'succeeded', 'failed', 'unknown', 'rejected'
+      )
+    ),
+  idempotency_key text not null unique,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+create table private.owner_financial_accounts (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null references public.master_owners(id),
+  provider text not null,
+  provider_account_id text not null,
+  currency text not null default 'INR',
+  verification_status text not null,
+  active boolean not null default false,
+  masked_bank_label text,
+  created_at timestamptz not null default now(),
+  unique (provider, provider_account_id),
+  unique (id, master_owner_id, currency)
+);
+create unique index one_active_owner_financial_account
+  on private.owner_financial_accounts(master_owner_id, provider, currency)
+  where active;
+create table private.payouts (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid not null,
+  financial_account_id uuid not null,
+  currency text not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  status text not null default 'planned'
+    check (
+      status in (
+        'planned', 'submitted', 'processing',
+        'settled', 'failed', 'reversed', 'unknown'
+      )
+    ),
+  provider_settlement_id text,
+  idempotency_key text not null unique,
+  period_start timestamptz,
+  period_end timestamptz,
+  created_at timestamptz not null default now(),
+  settled_at timestamptz,
+  foreign key (financial_account_id, master_owner_id, currency)
+    references private.owner_financial_accounts(id, master_owner_id, currency),
+  unique (id, master_owner_id)
+);
+create table private.payout_allocations (
+  id uuid primary key default gen_random_uuid(),
+  payout_id uuid not null,
+  master_owner_id uuid not null,
+  booking_id uuid not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  foreign key (payout_id, master_owner_id)
+    references private.payouts(id, master_owner_id),
+  foreign key (booking_id, master_owner_id)
+    references public.bookings(id, master_owner_id)
+);
+create table private.payment_transfers (
+  id uuid primary key default gen_random_uuid(),
+  payment_id uuid not null references private.payments(id),
+  financial_account_id uuid not null
+    references private.owner_financial_accounts(id),
+  payout_allocation_id uuid references private.payout_allocations(id),
+  provider_transfer_id text,
+  amount_minor bigint not null check (amount_minor > 0),
+  status text not null,
+  idempotency_key text not null unique,
+  created_at timestamptz not null default now()
+);
+create table private.transfer_reversals (
+  id uuid primary key default gen_random_uuid(),
+  transfer_id uuid not null references private.payment_transfers(id),
+  refund_id uuid references private.refunds(id),
+  provider_reversal_id text,
+  amount_minor bigint not null check (amount_minor > 0),
+  status text not null,
+  idempotency_key text not null unique,
+  created_at timestamptz not null default now()
+);
+create table private.commission_rules (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid references public.master_owners(id),
+  basis_points integer not null check (basis_points between 0 and 10000),
+  fixed_minor bigint not null default 0 check (fixed_minor >= 0),
+  effective_from timestamptz not null,
+  effective_until timestamptz,
+  version integer not null,
+  created_by uuid not null references public.profiles(user_id),
+  check (effective_until is null or effective_until > effective_from)
+);
+create table private.disputes (
+  id uuid primary key default gen_random_uuid(),
+  payment_id uuid not null references private.payments(id),
+  provider_dispute_id text,
+  status text not null,
+  reason text,
+  amount_minor bigint not null check (amount_minor >= 0),
+  evidence_due_at timestamptz,
+  created_at timestamptz not null default now()
+);
+The financial routines must additionally validate cross-record relationships that traverse provider records—for example, that a transfer’s payment belongs to the same business as its destination account.
+Never accept a destination account supplied by a player or ordinary employee.
+5.6 Financial ledger
+create table private.ledger_accounts (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid references public.master_owners(id),
+  code text not null,
+  currency text not null,
+  unique (id, currency)
+);
+create unique index ledger_owner_account_unique
+  on private.ledger_accounts(master_owner_id, code, currency)
+  where master_owner_id is not null;
+create unique index ledger_platform_account_unique
+  on private.ledger_accounts(code, currency)
+  where master_owner_id is null;
+create table private.ledger_journals (
+  id uuid primary key default gen_random_uuid(),
+  event_key text not null unique,
+  event_type text not null,
+  currency text not null,
+  booking_id uuid references public.bookings(id),
+  reversal_of uuid references private.ledger_journals(id),
+  posted_at timestamptz not null default now(),
+  unique (id, currency)
+);
+create table private.ledger_entries (
+  id uuid primary key default gen_random_uuid(),
+  journal_id uuid not null,
+  account_id uuid not null,
+  currency text not null,
+  amount_minor bigint not null check (amount_minor <> 0),
+  foreign key (journal_id, currency)
+    references private.ledger_journals(id, currency),
+  foreign key (account_id, currency)
+    references private.ledger_accounts(id, currency)
+);
+create index ledger_entries_account_idx
+  on private.ledger_entries(account_id, journal_id);
+Use signed debits/credits with a documented convention.
+A deferred constraint trigger must enforce:
+For each posted journal:
+entry count >= 2
+    AND sum(amount_minor) = 0
+Check both journal insertion and entry mutations so an empty journal cannot bypass validation.
+Only a dedicated post_journal(...) routine may insert journals and entries. Posted records are immutable. Corrections create reversal journals.
+Do not derive payouts from a mutable owners.balance column.
+5.7 Operational reliability, audit, and notifications
+create table private.api_idempotency (
+  actor_user_id uuid not null references public.profiles(user_id),
+  operation text not null,
+  idempotency_key text not null,
+  request_hash text not null,
+  response_json jsonb,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  primary key (actor_user_id, operation, idempotency_key)
+);
+create table private.webhook_events (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null,
+  provider_account_scope text not null,
+  provider_event_id text not null,
+  event_type text not null,
+  raw_body text not null,
+  body_hash text not null,
+  status text not null default 'received'
+    check (status in ('received', 'processing', 'processed', 'failed')),
+  attempts integer not null default 0,
+  next_attempt_at timestamptz not null default now(),
+  last_error text,
+  received_at timestamptz not null default now(),
+  processed_at timestamptz,
+  unique (provider, provider_account_scope, provider_event_id)
+);
+create table private.outbox_events (
+  id uuid primary key default gen_random_uuid(),
+  topic text not null,
+  aggregate_type text not null,
+  aggregate_id uuid not null,
+  dedupe_key text not null unique,
+  payload jsonb not null,
+  available_at timestamptz not null default now(),
+  attempts integer not null default 0,
+  lease_until timestamptz,
+  completed_at timestamptz,
+  last_error text,
+  created_at timestamptz not null default now()
+);
+create index outbox_pending_idx
+  on private.outbox_events(available_at)
+  where completed_at is null;
+create table private.audit_events (
+  id uuid primary key default gen_random_uuid(),
+  master_owner_id uuid references public.master_owners(id),
+  turf_id uuid,
+  actor_user_id uuid references public.profiles(user_id),
+  actor_type text not null
+    check (actor_type in ('user', 'system', 'gateway')),
+  action text not null,
+  entity_type text not null,
+  entity_id uuid,
+  before_data jsonb,
+  after_data jsonb,
+  reason text,
+  request_id text,
+  created_at timestamptz not null default now(),
+  foreign key (turf_id, master_owner_id)
+    references public.turfs(id, master_owner_id),
+  check (turf_id is null or master_owner_id is not null)
+);
+create index audit_owner_time_idx
+  on private.audit_events(master_owner_id, created_at desc);
+create index audit_turf_time_idx
+  on private.audit_events(turf_id, created_at desc);
+create index audit_actor_time_idx
+  on private.audit_events(actor_user_id, created_at desc);
+create table private.device_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(user_id),
+  app_id text not null check (app_id in ('app-player', 'app-owner')),
+  token text not null unique,
+  platform text not null,
+  last_seen_at timestamptz not null default now(),
+  revoked_at timestamptz
+);
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(user_id),
+  kind text not null,
+  title text not null,
+  body text not null,
+  deep_link text,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create table private.notification_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  notification_id uuid not null references public.notifications(id),
+  channel text not null check (channel in ('push', 'sms', 'email')),
+  recipient_key text not null,
+  provider_message_id text,
+  status text not null,
+  attempts integer not null default 0,
+  next_attempt_at timestamptz,
+  unique (notification_id, channel, recipient_key)
+);
+create table private.turf_approval_events (
+  id uuid primary key default gen_random_uuid(),
+  turf_id uuid not null references public.turfs(id),
+  actor_user_id uuid not null references public.profiles(user_id),
+  from_status text not null,
+  to_status text not null,
+  reason text,
+  created_at timestamptz not null default now()
+);
+create table private.daily_turf_metrics (
+  master_owner_id uuid not null,
+  turf_id uuid not null,
+  local_date date not null,
+  currency text not null,
+  confirmed_bookings integer not null default 0,
+  booked_minutes integer not null default 0,
+  scheduled_minutes integer not null default 0,
+  blocked_minutes integer not null default 0,
+  gross_booking_minor bigint not null default 0,
+  captured_minor bigint not null default 0,
+  refunded_minor bigint not null default 0,
+  earned_owner_minor bigint not null default 0,
+  refreshed_at timestamptz not null default now(),
+  foreign key (turf_id, master_owner_id)
+    references public.turfs(id, master_owner_id),
+  primary key (turf_id, local_date, currency)
+);
+Use masked/digested recipient identifiers where possible in delivery tables. Apply retention limits to raw webhooks, notification payloads, and booking contact data.
+5.8 Post-MVP review schema
+create table public.reviews (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null unique references public.bookings(id),
+  player_user_id uuid not null references public.players(user_id),
+  turf_id uuid not null references public.turfs(id),
+  rating smallint not null check (rating between 1 and 5),
+  body text not null default '',
+  moderation_status text not null default 'pending'
+    check (moderation_status in ('pending', 'published', 'hidden')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+The submission routine must derive player/turf from the booking and require an eligible completed booking. A caller must not submit arbitrary combinations of these IDs.
+
+6. RLS and authorization implementation
+6.1 Default-deny rules
+Supabase security requires both SQL privileges and RLS policies. An RLS policy does not grant table access, and adding policies does not remove existing grants. [S1]
+Adopt the following:
+Rule
+Implementation
+Every API-visible table has RLS
+Explicit migration plus CI assertion
+No broad default writes
+Revoke anonymous/authenticated writes to business tables
+Critical writes are RPC-only
+Grant EXECUTE only on approved functions
+Private tables are not API-exposed
+Exclude private from exposed schemas
+No service key in apps
+Only server-side secrets
+No automatic owner bypass from JWT metadata
+Query authoritative membership tables
+Field-sensitive reads use projections
+RLS does not hide selected columns
+Views require review
+Use security_invoker = true where appropriate; do not expose definer views accidentally
+6.2 Turf capability helper
+A private SECURITY DEFINER helper can avoid recursive RLS joins into membership tables.
+create or replace function private.can_turf(
+  p_turf_id uuid,
+  p_capability text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.turfs t
+    join public.master_owners mo
+      on mo.id = t.master_owner_id
+    where t.id = p_turf_id
+      and mo.status = 'active'
+      and exists (
+        select 1
+        from private.capabilities c
+        where c.code = p_capability
+          and c.scope = 'turf'
+      )
+      and (
+        mo.owner_user_id = (select auth.uid())
+        or exists (
+          select 1
+          from public.employees e
+          join public.employee_turf_assignments a
+            on a.employee_id = e.id
+           and a.master_owner_id = e.master_owner_id
+          join private.assignment_grants g
+            on g.assignment_id = a.id
+          where e.user_id = (select auth.uid())
+            and e.master_owner_id = t.master_owner_id
+            and e.status = 'active'
+            and a.active
+            and a.turf_id = t.id
+            and g.capability = p_capability
+        )
+      )
+  );
+$$;
+revoke all on function private.can_turf(uuid, text) from public;
+grant usage on schema private to authenticated;
+grant execute on function private.can_turf(uuid, text)
+  to authenticated;
+Granting schema USAGE does not itself grant table access. Keep private table privileges revoked, and keep private unexposed through the Data API.
+The function must be owned by a controlled migration/function-owner role capable of reading the membership records. Never let application users alter it.
+Use a separate helper for owner-account reads, a separate onboarding authorization path, and separate admin capability checks.
+The example intentionally requires an active business for normal turf operations. Owners in onboarding/suspension still need narrowly authorized account, support, and historical financial access.
+6.3 Example booking read policy
+alter table public.bookings enable row level security;
+revoke all on public.bookings from anon, authenticated;
+grant select on public.bookings to authenticated;
+create policy bookings_read
+on public.bookings
+for select
+to authenticated
+using (
+  player_user_id = (select auth.uid())
+  or private.can_turf(turf_id, 'bookings.read')
+);
+-- No authenticated INSERT, UPDATE, or DELETE grant.
+-- Booking mutations go through authorized RPC functions.
+Do not place confidential contact information or gateway payloads on bookings if all booking readers should not see them.
+For booking contacts, provide a restricted RPC that returns the minimum needed for an assigned booking operator.
+6.4 Table-by-table access contract
+In this table, RPC write means the client has no direct write grant; a function performs explicit authorization and validation.
+Table
+Read access
+Write access
+profiles
+Self; minimal identity projections for authorized business workflows
+Self through restricted profile RPC
+players
+Self
+Self provisioning/update RPC
+master_owners
+Owning user; authorized admin projection
+Owner onboarding/update RPC; admin status RPC
+employees
+Self membership; owning Master Owner
+Master Owner membership RPC
+employee_turf_assignments
+Assigned employee’s own rows; Master Owner
+Master Owner assignment RPC
+private.capabilities
+Sanitized catalogue RPC
+Migrations only
+private.assignment_grants
+Own effective grants; Master Owner via RPC
+Master Owner permission RPC
+private.employee_owner_grants
+Own effective grants; Master Owner via RPC
+Master Owner permission RPC
+private.platform_admins
+Authorized admin tooling
+Restricted provisioning procedure
+private.admin_grants
+Authorized admin tooling
+Restricted provisioning procedure
+private.employee_invites
+Master Owner; invitation acceptance routine
+Owner invite/revoke workflow
+turfs
+Approved public listing; assigned staff; owning Master Owner
+Owner/listing.edit RPC; admin approval RPC
+resources
+Public-safe data for approved turfs; assigned staff
+Authorized resource RPC
+sports
+Public
+Migration/admin catalogue RPC
+resource_sports
+Public for approved resources
+Authorized resource RPC
+amenities
+Public
+Migration/admin catalogue RPC
+turf_amenities
+Public for approved turfs
+listing.edit/owner RPC
+turf_photos
+Published photos publicly; drafts to authorized staff
+listing.edit/owner RPC
+operating_hours
+Authorized operational readers; public via availability response
+Calendar configuration RPC
+operating_exceptions
+Authorized operational readers
+Calendar configuration RPC
+pricing_rules
+pricing.read; Master Owner
+pricing.edit RPC
+cancellation_policies
+Owner; published snapshot in booking/listing responses
+Owner policy-version RPC
+turf_booking_settings
+Authorized staff; public-safe checkout projection
+Owner settings RPC
+slots
+Published slots of approved turfs; authorized staff
+Schedule generation/configuration routines
+bookings
+Booking player; bookings.read; Master Owner
+Booking workflow RPCs
+booking_slots
+Same access as parent booking
+Booking workflow RPCs
+inventory_allocations
+Staff calendar projection; public only redacted availability
+Inventory workflow RPCs
+private.booking_contacts
+Booking player; authorized operational contact RPC
+Booking/contact RPC
+booking_events
+Same access as parent booking
+Workflow routines only
+private.offline_collections
+Owner; scoped financial projection
+payments.record_offline RPC
+private.payment_orders
+Player/owner scoped payment projection
+Payment orchestration routines
+private.payments
+Player receipt; owner/authorized turf financial projection
+Verified payment routines
+private.refunds
+Player/owner/scoped refund projection
+Refund workflow routines
+private.owner_financial_accounts
+Owner; masked authorized finance projection
+Owner MFA workflow
+private.payouts
+Owner; explicit account-level payouts.read
+Settlement workflow
+private.payout_allocations
+Owner; turf-scoped allocation projection where permitted
+Settlement workflow
+private.payment_transfers
+Authorized finance/admin projections
+Gateway integration routines
+private.transfer_reversals
+Authorized finance/admin projections
+Reversal integration routines
+private.commission_rules
+Admin; owner contract projection
+Admin commission RPC
+private.disputes
+Assigned admin; relevant owner/player projection
+Dispute workflow
+private.ledger_accounts
+Authorized ledger/reporting routines
+Financial setup routines
+private.ledger_journals
+Authorized financial projections
+Posting routine only
+private.ledger_entries
+Authorized financial projections
+Posting routine only
+private.api_idempotency
+Internal routines only
+Internal routines only
+private.webhook_events
+Internal workers; restricted operations tooling
+Webhook ingestion/worker
+private.outbox_events
+Internal workers
+Transactional routines and workers
+private.audit_events
+Owner; scoped audit.read; authorized admin
+Triggers/workflow routines only
+private.device_tokens
+Self through RPC
+Self registration/revocation RPC
+notifications
+Recipient only
+System creates; recipient mark-read RPC
+private.notification_deliveries
+Internal workers
+Notification workers
+private.turf_approval_events
+Owner and authorized admin projection
+Admin approval routine
+private.daily_turf_metrics
+Owner; analytics.read scoped RPC
+Aggregation jobs
+reviews
+Published reviews; author’s own pending reviews
+Eligible player RPC; moderation RPC
+For raw private tables, enable RLS as defense in depth where appropriate, but do not invent permissive user policies simply to make them queryable. Their client access is through constrained routines.
+6.5 Mutation function security
+Every privileged function must satisfy this contract:
+Requirement
+Implementation
+Actor identity
+Derive from auth.uid() for user-facing RPCs
+Tenant
+Derive from the target resource; verify any supplied context
+Authorization
+Recheck the exact capability inside the transaction
+Function search path
+Empty or fixed, with fully qualified object names
+Input validation
+Validate durations, limits, money, state transitions, and JSON
+Execute grants
+Revoke default PUBLIC execution
+Concurrency
+Lock required records in documented order
+Audit
+Write an event in the same transaction
+Result
+Return only a role-appropriate response
+Retry behavior
+Idempotency key and request hash
+Direct write bypass
+No client table-write grant
+A SECURITY DEFINER routine can bypass RLS depending on its owner. Therefore, its explicit authorization checks are security-critical.
+For internal worker routines, use separate service-only functions. Never expose a function that lets a caller supply any actor_user_id and impersonate that person.
+
+7. Double-booking prevention and booking transactions
+7.1 Why a unique slot ID is insufficient
+Suppose one user requests 18:00–19:00 and another requests 18:30–19:30.
+A uniqueness check on (resource_id, starts_at) would allow both.
+The exclusion constraint checks the entire time interval, so any overlap is rejected.
+Adjacent intervals remain valid:
+18:00–19:00
+19:00–20:00
+7.2 Locking strategy
+For MVP, serialize inventory-changing transactions by locking the resource row.
+select id
+from public.resources
+where id = p_resource_id
+for update;
+This is intentionally simple.
+The lock lasts only for a short database transaction—not throughout checkout.
+All routines that hold, confirm, expire, block, cancel, or reschedule inventory must follow the same locking convention.
+The exclusion constraint remains the final protection even if a future code path misses the lock.
+Lock ordering
+Object
+Lock ordering
+Multiple resources
+Sort resource UUIDs before locking
+Bookings
+Lock after required resources
+Payment/refund records
+Lock after the related booking where applicable
+Owner settlement account
+Use one documented order for all financial routines
+Job queue rows
+Bounded claims using FOR UPDATE SKIP LOCKED
+If a routine first reads a booking to discover its resource, re-read and validate it after acquiring the resource lock. Rescheduling may have changed it.
+7.3 create_booking_hold transaction
+Step
+Required work
+1
+Verify signed-in player and account eligibility
+2
+Validate idempotency key and canonical request hash
+3
+Lock the resource
+4
+Verify approved turf, active business, active resource
+5
+Release relevant expired holds under the same locking convention
+6
+Validate requested interval against published slots and current operating rules
+7
+Verify duration, lead time, booking horizon, and sport/resource compatibility
+8
+Calculate authoritative price
+9
+Snapshot pricing, cancellation policy, and commission terms
+10
+Insert bookings with status = 'held'
+11
+Insert one active hold allocation
+12
+Insert the constituent booking_slots
+13
+Write audit and outbox events
+14
+Persist idempotent response and commit
+A conflict returns a stable application error such as SLOT_UNAVAILABLE. PostgreSQL exclusion violations use SQLSTATE 23P01; map that to a friendly conflict response without exposing raw database internals.
+If two requests race, only one can obtain overlapping active inventory.
+7.4 Hold expiry
+Do not put expires_at > now() inside the exclusion constraint predicate.
+Time passing does not automatically update index membership.
+An expired hold stays blocking until its allocation is explicitly released.
+Use both:
+Mechanism
+Purpose
+Scheduled expiry job
+Clean up expired holds regularly
+Opportunistic expiry in booking transaction
+Prevent stale holds from unnecessarily blocking checkout
+Expiry is a transaction:
+lock resource
+lock booking/allocation
+verify hold is still active and deadline passed
+set allocation.released_at
+set booking.status = expired
+write audit/outbox
+commit
+Use database time, not the phone clock.
+7.5 Payment-versus-expiry race
+The expiry worker and payment confirmation worker must contend on the same locks.
+Situation
+Decision
+Captured payment and valid unreleased hold
+Confirm booking
+Payment failure on one attempt
+Record attempt failure; do not assume every attempt failed
+Hold expired before confirmation
+Do not blindly restore inventory
+Captured payment arrives after expiry
+Record capture and initiate exception/refund workflow
+Another customer already booked the time
+Never displace the new customer
+Payment event duplicated
+Return existing result without re-confirming or re-posting money
+For MVP, adopt a strict rule: a payment reconciled after the hold deadline is not automatically confirmed. Refund it unless an explicit recovery procedure safely re-reserves the inventory.
+This favors correctness over occasionally recovering a late successful payment.
+7.6 Walk-in bookings
+Walk-ins must use the same allocation table and exclusion constraint.
+An employee must not create an offline booking in a separate table that bypasses online inventory.
+Offline cash recording is a separate financial event. It must not be represented as a captured gateway payment.
+
+8. Pricing, availability, cancellation, and rescheduling
+8.1 Pricing rule resolution
+Define deterministic precedence.
+Priority
+Rule
+Highest
+Explicit date/time override
+Next
+Special-day/holiday rule
+Next
+Weekday and time-band rule
+Lowest
+Base resource price
+Reject conflicting rules at the same priority rather than relying on row insertion order.
+For MVP, split overnight price bands into two local-date segments. This is easier to validate than ambiguous 22:00–02:00 matching.
+For a requested booking, sum the authoritative price across its increments and return a detailed quote.
+Existing confirmed bookings must never change price when an employee edits tomorrow’s pricing.
+8.2 Availability response
+A public availability RPC should return a bounded, redacted result:
+{
+  "resource_id": "resource-uuid",
+  "timezone": "Asia/Kolkata",
+  "availability_version": 42,
+  "slots": [
+    {
+      "starts_at": "2026-10-01T12:30:00Z",
+      "ends_at": "2026-10-01T13:00:00Z",
+      "available": true,
+      "amount_minor": 50000,
+      "currency": "INR"
+    }
+  ]
+}
+It must not return booking IDs, player names, phone numbers, or hold owners.
+Availability is advisory until the hold transaction succeeds.
+8.3 Search
+Use PostGIS for geographic filtering and a bounded SQL/RPC query.
+Filter
+Implementation
+Location
+ST_DWithin with GiST index
+Sport
+Resource-to-sport relation
+Price
+Quote for requested date/duration; catalogue “from price” is only indicative
+Availability
+Candidate filtering followed by overlap checks
+Amenities
+Normalized amenity joins
+Pagination
+Keyset pagination and deterministic tie-breaking
+Do not compute precise availability for every turf in the country before applying location and sport filters.
+Generate a rolling slot horizon, such as 60 days, with idempotent scheduled generation.
+8.4 Cancellation
+Step
+Action
+1
+Authenticate and authorize player/staff/admin
+2
+Lock resource and booking
+3
+Evaluate the booking’s snapshotted policy using DB time
+4
+Calculate refund amount and any retained fee
+5
+Mark booking cancelled and release inventory
+6
+Create refund request and durable outbox job
+7
+Commit
+8
+Process gateway refund asynchronously
+9
+Notify final refund result separately
+Cancellation and refund completion are different states.
+A cancelled booking can legitimately have refund_processing in its financial projection.
+8.5 Rescheduling
+For MVP, support same-price or no-additional-payment rescheduling through one transaction:
+lock old and new resources in stable order
+lock booking
+validate policy and permission
+release old allocation
+attempt new allocation
+update booking times and slot mappings
+write audit and notifications
+commit
+If the new allocation conflicts, the transaction rolls back and the original booking remains intact.
+For a higher-priced target, introduce a Phase 2 booking_change_intents workflow. Keep the original booking until the top-up and target-inventory requirements are satisfied.
+Do not mutate the original booking and then hope a subsequent payment succeeds.
+
+9. Payment and payout architecture
+9.1 Gateway choice
+Choose one gateway for launch. Implement a small adapter interface so another can be added later without moving authorization or financial rules into provider-specific code.
+Razorpay Route supports linked accounts, transfers, reversals, and linked-account settlements. Cashfree Easy Split supports marketplace collection and vendor settlement workflows. Actual activation, settlement timing, and refund behavior depend on the approved product configuration. [S5][S7]
+Do not promise a settlement schedule before gateway onboarding and contracts are confirmed.
+9.2 End-to-end checkout
+Step
+Actor
+Action
+1
+Player
+Chooses resource, time, and advance/full payment
+2
+Client
+Calls create_booking_hold with idempotency key
+3
+Postgres
+Reserves inventory and returns server-calculated amount
+4
+Client
+Calls checkout Edge Function with booking ID
+5
+Edge Function
+Verifies identity and ownership of the hold
+6
+DB routine
+Creates or returns a durable payment-order intent
+7
+Edge Function
+Creates gateway order using stored amount and currency
+8
+DB routine
+Stores provider order ID
+9
+Client
+Opens official gateway checkout
+10
+Gateway
+Collects/authorizes/captures payment
+11
+Gateway
+Sends signed webhook
+12
+Webhook Edge Function
+Verifies signature and persists event
+13
+Worker/DB routine
+Validates order, amount, currency, and state
+14
+Postgres
+Confirms eligible hold and posts financial journal
+15
+Outbox worker
+Sends confirmation and invalidates availability
+16
+Settlement workflow
+Transfers/settles eligible owner funds
+17
+Reconciliation
+Verifies provider settlement and marks payout settled
+A browser callback saying success is not final financial truth.
+It can trigger a server-side status refresh, but the server must verify the provider result.
+9.3 Advance payments
+Treat booking value and collected money separately.
+Example, ignoring taxes and gateway fees:
+Item
+Amount
+Booking value
+₹2,000
+Online advance
+₹500
+Remaining payable
+₹1,500
+Contractual commission at 10% of booking value
+₹200
+You must explicitly choose when commission becomes payable and how it is recovered.
+For launch, a practical policy is:
+The required online advance must cover the platform’s agreed commission and any amounts that contractually must be retained online.
+This does not eliminate the need to handle cancellations, refunds, and gateway fees.
+If the owner collects the balance offline, the platform cannot pretend it received that money. Record the offline collection separately, and calculate commission according to the agreed contract.
+If commission exceeds online funds, either increase the minimum online payment or explicitly model an owner receivable. Do not create an imaginary negative transfer.
+9.4 Consolidation across multiple turfs
+Use one verified linked account/vendor account per Master Owner legal business, normally per provider/currency.
+Maintain per-turf accounting internally.
+Layer
+Aggregation
+Booking
+One turf/resource
+Commission
+Snapshotted per booking
+Ledger attribution
+Booking/turf/owner
+Transfer
+Provider payment allocation
+Owner statement
+Aggregated across turfs
+Bank settlement
+Determined by gateway settlement grouping
+Payout detail
+Traceable back to booking allocations
+Consolidated reporting does not guarantee one bank transfer. A gateway may settle multiple transfers together or issue multiple settlements.
+The payouts model must map the provider’s actual settlement objects rather than assume one application batch always equals one bank deposit.
+Businesses with different legal beneficiaries should use separate Master Owner accounts or separately modeled legal entities—not silently route every turf to one person’s bank account.
+9.5 Ledger behavior
+Illustrative capture of ₹2,000, assuming ₹200 commission and ₹1,800 payable to owner:
+Ledger account
+Debit
+Credit
+Gateway clearing
+₹2,000
+—
+Owner payable
+—
+₹1,800
+Platform commission allocation
+—
+₹200
+Actual revenue recognition may occur later than capture. For that reason, use a deferred commission liability account until revenue is earned if required by your accounting policy.
+Gateway fees, taxes, owner-funded discounts, platform-funded discounts, refunds, and chargebacks require separate accounts or journal lines.
+Have an accountant validate the ledger mapping and invoicing rules before launch. Do not hardcode tax rates based on assumptions.
+9.6 Refund safety
+Requirement
+Implementation
+Maximum refundable amount
+Captured amount minus successful and reserved in-flight refunds
+Concurrent refund requests
+Lock payment/refund budget records
+Permission threshold
+Enforce max_amount_minor for delegated refund capability
+Policy override
+Admin/owner-only action with mandatory reason
+Gateway timeout
+Mark unknown; reconcile before retrying
+Duplicate request
+Same idempotency key returns same refund
+Owner already settled
+Apply reversal/recovery/reserve workflow
+Refund confirmation
+Finalize only after verified provider result
+Ledger correction
+Reversal journals, never history edits
+Pending refunds must reserve refundable capacity. Otherwise two simultaneous requests can each refund the same remaining amount.
+A payment can have multiple partial refunds, so provider_refund_id is not a field on the booking.
+9.7 Employees and finance
+Employee capability
+Allowed
+Not implied
+bookings.read
+Booking amount and operational status
+Owner bank details
+payments.record_offline
+Record a collection at assigned turf
+Mark gateway payment captured
+finance.read
+Assigned-turf financial projection
+Other turfs’ revenue
+refunds.request
+Submit request
+Execute refund
+refunds.issue
+Approve within configured limit
+Change commission or beneficiary
+payouts.read
+Explicitly delegated consolidated statement
+Bank changes
+payouts.request
+Request eligible release
+Arbitrary transfer amount/destination
+The employee website and app may expose a finance area only when permitted. The backend remains authoritative even if an employee calls an RPC manually.
+
+10. Webhook ingestion, idempotency, and recovery
+10.1 Webhook endpoint
+A payment provider does not send a Supabase user JWT.
+Configure the webhook endpoint accordingly, but replace user JWT authentication with strict gateway signature verification—not an unauthenticated business mutation path.
+For Razorpay, signature verification uses the raw request body, and webhook delivery order is not guaranteed. [S6]
+10.2 Processing contract
+Stage
+Behavior
+Receive
+Enforce method, body-size limit, expected content type
+Verify
+Validate signature over exact raw body
+Identify
+Extract provider event ID and account/environment scope
+Persist
+Insert unique inbox record
+Acknowledge
+Return success only after durable persistence
+Process
+Apply event in a transactional, idempotent routine
+Retry
+Retry transient failures with backoff
+Dead letter
+Escalate repeated failures to operations tooling
+Reconcile
+Periodically query provider for unresolved financial states
+If durable persistence fails, return an error so the gateway can retry.
+If the event is already stored, return success without duplicating side effects.
+Deduplication must exist at two levels:
+Level
+Unique key
+Delivery
+Provider event ID
+Business effect
+Payment/refund/transfer ID plus transition or ledger event key
+Different webhook types may describe the same capture. For example, order-paid and payment-captured notifications must not post two financial journals.
+10.3 Out-of-order events
+Do not implement last webhook wins.
+Use explicit allowed transitions and provider reconciliation where necessary.
+captured payment
+    + delayed authorized event
+    = remain captured
+A failed attempt does not cancel a different successful attempt under the same payment order.
+10.4 External-call uncertainty
+A database transaction cannot atomically commit with a gateway API call.
+For each outbound operation:
+persist durable intent
+commit
+perform provider call
+persist known result
+If the network fails after the provider accepted the call:
+mark operation unknown
+query provider using stored identifiers
+retry only after resolving uncertainty
+Use provider idempotency only where that specific endpoint documents support. Do not assume all payment, order, transfer, and refund endpoints share the same idempotency mechanism.
+An application idempotency key prevents duplicate local requests but cannot, by itself, prevent duplicate external side effects after an ambiguous timeout.
+
+11. Audit and employee oversight
+11.1 What to log
+Event
+Required detail
+Employee invited
+Inviter, recipient reference, business
+Employee assigned
+Employee, turf, effective grants
+Permission changed
+Before/after capability set
+Price changed
+Rule version and before/after values
+Slot blocked
+Resource, interval, reason
+Slot unblocked
+Original block and actor
+Walk-in created
+Booking, employee, turf
+Booking cancelled
+Actor, reason, policy outcome
+Booking rescheduled
+Old/new interval and price difference
+Refund requested
+Amount, reason, requesting actor
+Refund approved
+Approver and permission threshold
+Bank destination changed
+Masked destination references and verification outcome
+Turf approved/suspended
+Admin actor and reason
+Capture business mutation audit entries in the same transaction as the mutation.
+Use triggers for reliable before/after data where appropriate, and workflow routines for semantic context such as refund approved under policy.
+Do not trust a client-supplied actor ID.
+11.2 Audit privacy and integrity
+Audit records should not contain passwords, full bank details, card information, or unnecessary contact data.
+Application roles cannot update/delete audit events. Database administrators still have technical power; if strong tamper evidence is required, export signed or hash-chained audit batches to separately controlled archival storage.
+Employee activity should mean business actions and handled bookings—not an unsupported claim about whether someone is physically working based on app presence.
+
+12. Realtime, notifications, and Storage
+12.1 Realtime strategy
+Use Realtime to tell clients what to refresh, not to broadcast complete sensitive rows.
+Channel
+Payload
+Authorization
+Availability by resource/date
+Resource, date, version
+Public-safe or authenticated discovery access
+Staff turf calendar
+Calendar version/invalidation
+calendar.read for that turf
+Player booking status
+Booking reference and status version
+Booking player
+Owner dashboard
+Metrics version
+Owning Master Owner
+Notifications
+Notification ID
+Recipient
+For private Broadcast channels, implement policies on realtime.messages and configure the client channel as private. Supabase documents that channel authorization is cached and refreshed on join/new JWT rather than checked for every message. [S2]
+Consequently, revoking an employee in Postgres does not necessarily instantly remove their existing Broadcast subscription.
+Mitigate this by sending only non-sensitive invalidation payloads and requiring a fresh authorized read for actual data. Use short-lived sessions/tokens appropriate to the risk, refresh/rejoin handling, and connection revocation mechanisms where available.
+Do not rely on the cooperative client to protect data after revocation.
+On reconnect, always re-fetch current state. Realtime is not a durable event log.
+12.2 Notification delivery
+Supabase provides the backend and orchestration, but push/SMS/email delivery still needs appropriate external delivery providers.
+Notification
+Trigger
+Booking confirmation
+Confirmed booking transaction
+Payment pending
+Checkout created but not confirmed
+Reminder
+Scheduled before booking
+Cancellation
+Cancellation transaction
+Refund update
+Verified refund transition
+Employee invitation
+Invitation workflow
+Payout update
+Settlement state change
+Write notification/outbox intent inside the business transaction. Deliver asynchronously.
+Before sending a reminder, re-read booking status and version. A rescheduled or cancelled booking must not receive the old reminder.
+Use delivery deduplication and retry policies per channel.
+12.3 Storage security
+Bucket/use
+Access
+Published turf photos
+Public delivery of explicitly published images
+Draft turf photos
+Private; authorized listing editor
+Business verification documents
+Private; owner and authorized admin
+Dispute evidence
+Private; case-scoped authorization
+Generated statements
+Private; authorized owner/finance reader
+Storage path example:
+businesses/{master_owner_id}/turfs/{turf_id}/photos/{file_id}.webp
+A path convention is not authorization. Storage RLS must verify membership and turf ownership.
+Validate file size/type, strip unnecessary metadata where appropriate, and prevent a user from uploading into another tenant’s path.
+Database backups and Storage object backups require separate recovery planning.
+
+13. Analytics and payout reporting
+13.1 Define metrics before building dashboards
+Metric
+Definition
+Gross booking value
+Value of qualifying bookings before specified deductions
+Online collections
+Verified captured gateway payments
+Offline collections
+Recorded and non-reversed offline receipts
+Refunds
+Successfully completed refunds
+Owner earnings
+Contractual owner amount earned under the accounting policy
+Owner payable
+Earned/collected amount still owed to owner
+Settled payouts
+Provider-confirmed settlements
+Gross occupancy
+Booked minutes divided by scheduled operating minutes
+Sellable occupancy
+Booked minutes divided by operating minutes minus qualifying blocks
+Hold pressure
+Active held minutes; not confirmed occupancy
+Cancellation rate
+Cancelled bookings divided by the defined eligible cohort
+Show gross and sellable occupancy separately. Otherwise employees could block unused hours and artificially improve occupancy.
+13.2 Implementation
+Start with bounded owner/turf/date-range queries. Add daily_turf_metrics for dashboard speed when needed.
+Metrics must retain master_owner_id and turf_id.
+Do not expose a platform-wide materialized view directly to authenticated users. Expose tenant-filtered routines.
+Owner totals should aggregate the authorized turf metrics. Employee totals should aggregate only their permitted turfs.
+Handle bookings crossing midnight by splitting occupied minutes across venue-local dates.
+
+14. API and RPC contracts
+Maintain a versioned contract package shared across web and mobile.
+14.1 Required operations
+Operation
+Type
+Key requirements
+get_my_context
+Read RPC
+Roles, businesses, assignments, effective capabilities
+search_turfs
+Read RPC
+Location bounds, date/duration, pagination
+get_availability
+Read RPC
+Resource, bounded range, redacted output
+quote_booking
+Read RPC
+Authoritative quote and policy summary
+create_booking_hold
+Write RPC
+Idempotency and atomic inventory
+start_checkout
+Edge
+Durable provider order creation
+get_booking_payment_status
+Read RPC/Edge
+Authorized status; reconciliation if needed
+cancel_booking
+Write RPC
+Policy, refund intent, inventory release
+reschedule_booking
+Write RPC
+Atomic move for MVP-supported cases
+create_walkin_booking
+Write RPC
+Staff capability and same inventory constraints
+block_resource_time
+Write RPC
+Capability and no booking overlap
+release_resource_block
+Write RPC
+Capability and audit
+update_pricing_rule
+Write RPC
+Expected version and capability
+invite_employee
+Edge
+Owner authorization and invitation
+set_employee_assignments
+Write RPC
+Same-tenant references
+set_assignment_permissions
+Write RPC
+Owner-only; audit/version increment
+disable_employee
+Write RPC
+Immediate membership revocation
+request_refund
+Write RPC
+Amount reservation and permission
+get_owner_dashboard
+Read RPC
+Owner scope and bounded dates
+get_owner_statement
+Read RPC
+Consolidated and per-turf breakdown
+request_payout_release
+Write RPC
+Eligible funds only
+approve_turf
+Admin RPC
+Admin capability and reason
+set_commission_rule
+Admin RPC
+Versioned effective terms
+register_device_token
+Write RPC
+Self identity and application ID
+Use explicit error codes.
+{
+  "error": {
+    "code": "SLOT_UNAVAILABLE",
+    "message": "This time is no longer available.",
+    "request_id": "request-uuid",
+    "retryable": false
+  }
+}
+Use expected_version for user-edited records. Return VERSION_CONFLICT when another employee modified the record first.
+For monetary values, serialize bigint amounts as decimal strings or enforce safe numeric bounds consistently. JavaScript cannot represent every PostgreSQL bigint exactly.
+
+15. Repository and shared code
+15.1 Monorepo layout
+turf-platform/
+├── apps/
+│   ├── web-player/
+│   ├── web-owner/
+│   ├── web-master-owner/
+│   ├── web-admin/
+│   ├── app-player/
+│   └── app-owner/
+│
+├── packages/
+│   ├── web-ui/
+│   ├── web-auth/
+│   ├── web-api/
+│   ├── web-query/
+│   ├── owner-workspace/
+│   ├── contracts-ts/
+│   ├── database-types/
+│   ├── design-tokens/
+│   └── test-fixtures/
+│
+├── flutter-packages/
+│   ├── domain_models/
+│   ├── api_client/
+│   ├── auth_client/
+│   ├── design_system/
+│   ├── booking_features/
+│   ├── owner_features/
+│   └── notification_client/
+│
+├── contracts/
+│   ├── openapi/
+│   ├── json-schema/
+│   ├── errors/
+│   └── examples/
+│
+├── supabase/
+│   ├── config.toml
+│   ├── migrations/
+│   ├── seed.sql
+│   ├── functions/
+│   │   ├── _shared/
+│   │   ├── checkout/
+│   │   ├── payment-webhook/
+│   │   ├── employee-invitations/
+│   │   ├── refund-worker/
+│   │   ├── settlement-worker/
+│   │   ├── notification-worker/
+│   │   └── reconciliation-worker/
+│   └── tests/
+│       ├── rls/
+│       ├── inventory/
+│       ├── payments/
+│       └── ledger/
+│
+├── tests/
+│   ├── web-e2e/
+│   ├── mobile-integration/
+│   ├── contract/
+│   ├── concurrency/
+│   └── load/
+│
+├── docs/
+│   ├── architecture/
+│   ├── decisions/
+│   ├── runbooks/
+│   └── security/
+│
+└── tooling/
+    ├── codegen/
+    └── ci/
+Use a JavaScript workspace tool for TypeScript packages and a Dart workspace/Melos setup for Flutter packages. These are repository tools, not backend replacements.
+15.2 Sharing between owner websites
+owner-workspace should contain reusable feature modules, not the entire application shell.
+Shared module
+Used by
+Turf selector
+Employee web and Master Owner web
+Calendar
+Employee web and Master Owner web
+Booking detail
+Employee web and Master Owner web
+Pricing editor
+Employee web and Master Owner web
+Capability-aware controls
+Both owner websites
+Turf-level analytics
+Both where authorized
+Employee administration
+Master Owner website only
+Consolidated payout dashboard
+Master Owner website; delegated access only if explicitly designed
+Each app owns its routes, navigation, layout, and allowed workflows.
+A shared component accepting canRefund: true is only a UI convenience. The RPC still checks authorization.
+15.3 Sharing between Flutter applications
+Share domain models, networking, secure auth handling, formatting, notification registration, and reusable booking/calendar components.
+Do not force the player and employee apps into the same navigation structure.
+Use separate application IDs, signing identities, push configuration, app-store listings, and release pipelines.
+15.4 Cross-language contracts
+TypeScript and Dart cannot directly share source code.
+Share schemas and generated contracts.
+Contract
+Strategy
+Database types
+Generate TypeScript types from schema
+Public API DTOs
+OpenAPI/JSON Schema
+Dart models
+Generate from API schemas or maintain validated typed DTOs
+Error codes
+Shared versioned definitions
+Money behavior
+Common golden fixtures
+Date/time behavior
+Common UTC/local-time fixtures
+Permission capability names
+Generated catalogue
+Pricing authority
+Postgres only; do not duplicate authoritative pricing engines
+
+16. MVP phasing and build order
+16.1 Phase 1: Launchable MVP
+Keep the foundational multi-tenant and financial controls.
+Feature
+Phase 1 scope
+Multi-turf Master Owner
+Supported from day one
+Employee memberships
+Invite, disable, assign to multiple turfs
+Granular permissions
+Explicit grants with a small preset UI
+Turf onboarding
+Photos, address, sports, amenities, operating hours
+Approval workflow
+Admin approves/rejects/suspends
+Player search
+Location, sport, price indication, requested availability
+Inventory
+Holds, bookings, blocks, expiry
+Pricing
+Base, weekday/time-band, date override
+Online payments
+One gateway; advance and full payment
+Refunds
+Policy-driven; durable workflow
+Cancellation
+Player/staff/admin paths
+Rescheduling
+Same-price/no-top-up cases
+Walk-ins
+Same inventory system
+Notifications
+Confirmation, cancellation, reminder, refund result
+Analytics
+Basic owner aggregate and per-turf metrics
+Payouts
+Gateway-linked owner account, statements, reconciliation
+Audit
+All sensitive business actions
+Admin
+Listing approval, commission, refund/dispute oversight
+Security
+RLS tests, MFA, webhook validation, secret management
+Do not defer the ledger, idempotency, or reconciliation on the grounds that volume is initially low. Low volume does not prevent duplicate payments or authorization bugs.
+16.2 Phase 2
+Feature
+Expansion
+Reviews
+Verified-booking reviews and moderation
+Rescheduling
+Top-ups, partial credits, change-intent workflow
+Employee governance
+Reusable templates and approval thresholds
+Promotions
+Funding attribution and refund-aware discounts
+Analytics
+Faster rollups and cohort reporting
+Finance
+More automated reconciliation and exception handling
+Notifications
+Preferences, additional reminder policies
+Scheduling
+Recurring block configuration
+Operations
+Improved dispute evidence and support tooling
+16.3 Phase 3
+Feature
+Expansion
+Multi-resource packages
+Book multiple grounds atomically
+Recurring bookings
+Series with explicit conflict and payment rules
+Advanced pricing
+Demand-based recommendations with owner approval
+Corporate bookings
+Organization billing and controlled credit
+Waitlists
+Expiring offers and fair allocation rules
+Advanced payout governance
+Multi-stage approvals and reserves
+Second gateway
+Only after the first integration is operationally mature
+Higher-scale search/reporting
+Optimize based on measured bottlenecks
+Whole-ground and subdivided-ground booking require a shared physical-resource conflict model. Do not implement them as unrelated resources that can overlap physically.
+16.4 Recommended build order across all six surfaces
+Order
+Deliverable
+Why
+1
+Supabase schema, RLS, inventory RPCs, test fixtures
+Everything depends on correct boundaries
+2
+Minimal web-admin and web-master-owner
+Onboard businesses and approve turfs
+3
+web-owner
+Ensure operators can manage real inventory
+4
+web-player
+Complete the first end-to-end booking/payment flow
+5
+Harden finance, notifications, reconciliation, and support
+Required before public traffic
+6
+app-player
+Reuse proven contracts and player workflow
+7
+app-owner
+Reuse proven staff workflows
+8
+Expand admin/owner analytics and operational tooling
+Improve efficiency after correctness
+A controlled web-first pilot can begin before both mobile apps launch. If all six surfaces are contractually required at launch, keep their feature scope narrow rather than maintaining six divergent implementations.
+
+17. Testing and production acceptance criteria
+17.1 Authorization tests
+Create at least two businesses, three turfs, overlapping employee memberships, and separate players.
+Test
+Required result
+Owner A reads Owner B’s bookings
+Denied
+Employee assigned to Turf A reads Turf B
+Denied
+Employee changes request master_owner_id
+Rejected
+Viewer calls pricing mutation RPC
+Denied
+Refund operator changes bank destination
+Denied
+Employee updates their own grants
+Denied
+User edits user_metadata to claim owner role
+No extra access
+Player reads another player’s contact information
+Denied
+Revoked employee makes a new RPC call
+Denied
+Public listing view exposes private fields
+Test fails
+Admin UI account without refund capability requests refund
+Denied
+Storage upload uses another tenant’s path
+Denied
+Test direct Data API calls, not only UI behavior.
+17.2 Concurrency tests
+Use actual simultaneous database connections.
+Scenario
+Invariant
+100 requests for the same interval
+At most one active allocation
+Overlapping intervals with different starts
+At most one conflicting allocation
+Adjacent intervals
+Both can succeed
+Block versus hold
+Only one conflicting reservation succeeds
+Expiry versus capture
+One coherent final state
+Cancel versus reschedule
+No orphan or duplicate active inventory
+Duplicate hold request
+Same booking returned
+Concurrent partial refunds
+Total reserved/refunded never exceeds capture
+Duplicate capture webhooks
+One financial effect
+Reschedule target conflict
+Original booking remains intact
+17.3 Payment failure testing
+Failure
+Required recovery
+Gateway order created; DB persistence fails
+Reconcile unknown order creation
+Webhook received twice
+No duplicate booking/ledger effect
+Webhook arrives before checkout response
+State converges correctly
+Captured webhook arrives before authorized webhook
+Remains captured
+Refund request times out
+Unknown state; reconcile before retry
+Transfer succeeds; response lost
+No duplicate transfer
+Payment succeeds after hold expiry
+Exception/refund path
+Notification provider unavailable
+Booking succeeds; delivery retries
+Worker dies after claim
+Lease expires; job becomes retryable
+App closes during checkout
+Booking status recoverable after login
+17.4 Launch gates
+Gate
+Required evidence
+Security
+Automated RLS matrix passes
+Inventory
+Parallel conflict tests pass
+Financial integrity
+Ledger balances and duplicate-event tests pass
+Reconciliation
+Provider captures/refunds/settlements match internal records
+Recovery
+Backup restore tested
+Observability
+Alerts reach a real operator
+Support
+Refund/payment-exception runbooks exercised
+Gateway
+Production marketplace approval and destination verification complete
+Privacy
+Retention, account deletion, and document access rules implemented
+
+18. Supabase-specific limitations and operational risks
+18.1 RLS performance
+Risk
+Mitigation
+Nested membership checks on every row
+Index membership/assignment/grant paths
+Large unbounded owner queries
+Require date ranges and pagination
+Repeated identity function evaluation
+Use (select auth.uid()) where appropriate
+Recursive membership policies
+Carefully scoped private definer helpers
+Accidental definer-view bypass
+Security-invoker views or explicit authorized routines
+Policy explosion
+Capability helpers and consistent patterns
+Assuming frontend filters provide isolation
+RLS always enforces tenant scope
+Benchmark with realistic employee counts, bookings, and date ranges. Use EXPLAIN (ANALYZE, BUFFERS) in staging with realistic authorization context.
+Do not cache permissions indefinitely to improve performance.
+18.2 Edge Function limits
+The official documentation checked for this plan lists 256 MB memory, 2 seconds of CPU time per request, and wall-clock/runtime limits that vary by plan. These limits are subject to change. [S8]
+Design accordingly.
+Risk
+Mitigation
+CPU-heavy processing
+Keep functions focused on I/O and bounded work
+Long reconciliation job
+Process small batches with checkpoints
+Background task lost at runtime termination
+Durable outbox/queue, not only in-memory continuation
+Cold-start/dependency overhead
+Small bundles and measured latency
+Excess DB round trips
+Coarse transactional RPCs
+Connection exhaustion
+Prefer Data API RPC; use correct pooling when direct SQL is necessary
+Secrets exposed in shared package
+Server-only boundaries and CI secret scanning
+Do not use an Edge Function as a permanent scheduler or an infinite worker loop.
+18.3 Database transactions and pooling
+An RPC call is a transaction. Five sequential SDK calls are five separate transactions.
+Do not attempt to issue BEGIN through one REST request and COMMIT through another.
+If a function uses a direct pooled Postgres connection, do not rely on session-local settings persisting across unrelated requests. Use transaction-local settings.
+18.4 Realtime fan-out
+Risk
+Mitigation
+Every calendar update broadcast to every user
+Scope by resource/turf/date
+Sensitive booking rows in public channel
+Broadcast redacted invalidations
+Many channels per screen
+Subscribe only to visible resources/date ranges
+Revoked staff still subscribed
+No sensitive payloads; fresh reads enforce access
+Missed events
+Re-fetch on reconnect/focus
+Database load from authorization
+Keep channel policy checks indexed and simple
+18.5 Timezones
+Store UTC instants and the venue’s IANA timezone.
+Operating schedules and pricing rules use venue-local wall time. Booking inventory uses absolute instants.
+Do not store 7 PM as the booking time. Do not use the player phone’s timezone to interpret a venue’s schedule.
+Even if the initial market has no daylight-saving transitions, the data model should not depend on that assumption.
+18.6 Soft deletion and historical ownership
+A turf with bookings or money history cannot simply be deleted.
+Remove turf should normally mean archive/unpublish after handling future bookings and pending funds.
+Changing a turf’s master_owner_id is not an ordinary edit. It affects employee access, contracts, settlement destinations, and historical reporting.
+For launch, prohibit self-service ownership transfer. Use a reviewed administrative workflow later.
+18.7 Application and cache leaks
+Risk
+Mitigation
+Next.js caches personalized owner response globally
+Disable public caching for authenticated pages/data
+Shared query key omits tenant
+Include tenant/turf/user scope
+Logout leaves prior owner data on screen
+Clear caches and local state
+Offline employee app shows sensitive old data
+Minimize local persistence; clear on revoke/logout
+Player-supplied price trusted
+Server recomputes
+Service-role client reused for user reads
+Separate clients and code paths
+Origin/CORS treated as authorization
+Verify JWT and DB capabilities
+Listing editor self-approves turf
+Separate admin-only status routine
+18.8 Availability abuse
+Attackers can repeatedly create holds without paying.
+Use per-user and per-resource hold limits, rate limits, short TTLs, verified contact requirements, and risk-based abuse controls.
+A queue of fake holds is a business availability incident even when the database correctly prevents double-booking.
+
+19. Deployment, observability, and recovery
+19.1 Environments
+Environment
+Isolation
+Local
+Supabase local stack and seeded test data
+Staging
+Separate Supabase project and gateway test environment
+Production
+Separate project, secrets, domains, and gateway configuration
+Never connect preview deployments to production with privileged credentials.
+Use versioned migrations and expand/contract changes so older mobile app versions keep working during rollout.
+Do not require every player to update the mobile app immediately after a schema migration.
+19.2 Essential monitoring
+Signal
+Why it matters
+Hold creation latency
+Checkout experience
+Inventory conflict rate
+Contention and UX
+Captured but unconfirmed payments
+Immediate financial/customer risk
+Webhook processing lag
+Confirmation and refund delay
+Outbox age
+Stuck background effects
+Unknown provider operations
+Duplicate-payment risk
+Refund failure rate
+Customer support load
+Settlement mismatch
+Financial reconciliation
+DB CPU/locks/connections
+Capacity and contention
+Realtime disconnects
+Calendar freshness
+Authorization denials
+Bugs or abuse
+OTP/SMS failure rate
+Authentication availability
+Use structured logs with request ID, booking ID, payment-order ID, and job ID. Do not log credentials or full payment/contact payloads indiscriminately.
+19.3 Backup and recovery
+Define recovery objectives before launch and test them.
+Database recovery alone is not enough: the gateway may have processed payments while the database was unavailable or before a restored snapshot.
+After a restore, run a financial reconciliation over the affected time window before resuming unrestricted settlement automation.
+Maintain runbooks for booking holds stuck open, captured-but-unconfirmed payments, missing webhook events, refund uncertainty, and incorrect owner destinations.
+
+20. Decisions that must be finalized before production
+These do not block development of the architecture, but they must be explicit business configuration rather than developer guesses.
+Decision
+Recommended starting position
+Gateway
+One approved marketplace provider
+Commission basis
+Explicit contract: booking value or collections
+Advance minimum
+Enough to satisfy agreed online deductions
+Balance collection
+Online balance payment or recorded offline collection
+Cancellation windows
+Versioned and snapshotted at booking
+Refund funding after settlement
+Reserve/reversal/recovery policy
+Settlement timing
+Gateway-approved schedule and eligibility rules
+No-show handling
+Defined operational and refund policy
+Turf ownership transfer
+Admin-reviewed, not self-service
+Employee financial delegation
+Disabled by default
+Data retention
+Documented per data category
+Tax/invoicing responsibility
+Validated with qualified accounting/legal advice
+
+Final recommendation
+Build the backend around these four boundaries:
+Boundary
+Rule
+Ownership
+Master Owner business account owns the turfs
+Authority
+Employee access is explicit per turf and capability
+Inventory
+Postgres alone decides whether time can be reserved
+Money
+Verified provider events and an immutable ledger determine financial truth
+Keep multi-turf ownership, employee assignments, database-enforced inventory, audit, and payment reconciliation in Phase 1. Trim advanced dashboards, reviews, complex rescheduling, and promotional features instead.
+The most expensive mistakes in this product are not choosing the wrong UI library. They are allowing a staff member to cross tenant boundaries, confirming a booking without safe inventory, paying an owner twice, or losing track of a captured payment. This architecture puts those risks behind explicit database constraints, transactional workflows, and auditable recovery paths.
+Official references
+Retrieved/checked 17 September 2026. Runtime limits and gateway product behavior should be rechecked against the production account configuration.
+Reference
+Source
+S1
+Supabase — Row Level Security
+S2
+Supabase — Realtime Authorization
+S3
+Supabase — Next.js Server-Side Auth
+S4
+PostgreSQL — Range Types and Exclusion Constraints
+S5
+Razorpay — Route
+S6
+Razorpay — Validate and Test Webhooks
+S7
+Cashfree — Easy Split Overview
+S8
+Supabase — Edge Function Limits
+

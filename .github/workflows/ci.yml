@@ -1,0 +1,287 @@
+name: Box Codex CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # 1. Quality & Invariant Checks
+  # --------------------------------------------------------------------------
+  quality-gate:
+    name: Code Quality & Invariant Guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Migration Immutability
+        run: |
+          echo "Checking for illegal modifications to applied migrations..."
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"
+            MODIFIED_MIGRATIONS=$(git diff --name-only $BASE...HEAD -- 'supabase/migrations/*.sql')
+            EXISTING_ON_BASE=$(git ls-tree -r --name-only $BASE -- 'supabase/migrations/*.sql')
+            for file in $MODIFIED_MIGRATIONS; do
+              if echo "$EXISTING_ON_BASE" | grep -qx "$file"; then
+                echo "ERROR: Migration $file already exists on base branch and cannot be modified."
+                exit 1
+              fi
+            done
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            PREV="${{ github.event.before }}"
+            if [ -n "$PREV" ] && [ "$PREV" != "0000000000000000000000000000000000000000" ]; then
+              MODIFIED_MIGRATIONS=$(git diff --name-only $PREV HEAD -- 'supabase/migrations/*.sql')
+              EXISTING_ON_BASE=$(git ls-tree -r --name-only $PREV -- 'supabase/migrations/*.sql')
+              for file in $MODIFIED_MIGRATIONS; do
+                if echo "$EXISTING_ON_BASE" | grep -qx "$file"; then
+                  echo "ERROR: Push modified existing migration $file!"
+                  exit 1
+                fi
+              done
+            fi
+          fi
+          echo "Migration immutability check passed."
+
+      - name: Verify Seed & Secret Safety Invariants
+        run: |
+          echo "Checking for prohibited --include-seed references..."
+          if grep -rn --exclude-dir=.git --exclude-dir=scratch "--include-seed" .github/ docs/ README.md; then
+            echo "ERROR: Prohibited flag '--include-seed' detected in docs or workflows!"
+            exit 1
+          fi
+
+          echo "Checking supabase/config.toml sql_paths configuration..."
+          if ! grep -q 'sql_paths = \["\./seed\.sql"\]' supabase/config.toml; then
+            echo "ERROR: supabase/config.toml sql_paths must equal [\"./seed.sql\"] to prevent accidental demo seeding."
+            exit 1
+          fi
+
+          echo "Checking git index for leaked secrets..."
+          if git ls-files --error-unmatch supabase/functions/.env 2>/dev/null; then
+            echo "ERROR: supabase/functions/.env is tracked in git index!"
+            exit 1
+          fi
+
+          echo "Checking edge functions for fail-open SECRET / KEY literal defaults..."
+          node scripts/check_secret_defaults.mjs
+
+          echo "Seed and secret safety invariants verified."
+
+      - name: Verify No Tracked Env Files
+        run: |
+          echo "Checking git index for any tracked .env files..."
+          TRACKED_ENVS=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '\.env(\..+)?\.example$' || true)
+          if [ -n "$TRACKED_ENVS" ]; then
+            echo "ERROR: Untracked env invariant violated! Found tracked env files:"
+            echo "$TRACKED_ENVS"
+            exit 1
+          fi
+
+          echo "Verifying supabase/functions/.env.staging is git-ignored..."
+          if ! git check-ignore -q supabase/functions/.env.staging; then
+            echo "ERROR: supabase/functions/.env.staging is not ignored by git!"
+            exit 1
+          fi
+          echo "Tracked env file guards passed."
+
+      - name: Start Supabase Local Stack for Type Verification
+        run: npx supabase start
+
+      - name: Verify Database Types Up-To-Date (Stale-Contract Guard)
+        run: node scripts/verify_stale_contract_guard.mjs
+
+      - name: Typecheck Applications
+        run: |
+          npm --prefix apps/player run build
+          npm --prefix apps/owner run build
+          npm --prefix apps/admin run build
+
+  # --------------------------------------------------------------------------
+  # 2. Local Database Invariants & Automated Test Suites
+  # --------------------------------------------------------------------------
+  test-matrix:
+    name: Supabase pgTAP & Automated Test Suites
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # CRITICAL SAFETY INVARIANT: These MUST be test-mode keys. Production/live keys must never enter CI.
+      - name: Materialize Local Edge Secrets for CI
+        env:
+          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_TEST_KEY_ID }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_TEST_KEY_SECRET }}
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_TEST_WEBHOOK_SECRET }}
+          INTERNAL_WORKER_SECRET: ${{ secrets.INTERNAL_WORKER_SECRET }}
+        run: |
+          if [[ "$RAZORPAY_KEY_ID" != rzp_test_* ]]; then
+            echo "FATAL: RAZORPAY_KEY_ID does not start with 'rzp_test_'. Live/production keys are strictly prohibited in CI!"
+            exit 1
+          fi
+          mkdir -p supabase/functions
+          cat <<EOF > supabase/functions/.env
+RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
+INTERNAL_WORKER_SECRET=${INTERNAL_WORKER_SECRET}
+EOF
+          echo "Materialized supabase/functions/.env for CI (test mode verified, secrets unprinted)."
+
+      - name: Start Supabase Local Stack
+        run: npx supabase start
+
+      - name: Local Endpoint Refusal Guard
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          SUPABASE_URL: http://127.0.0.1:54321
+          EDGE_URL: http://127.0.0.1:54321/functions/v1
+        run: |
+          node -e '
+            const dbUrl = new URL(process.env.DATABASE_URL || "");
+            const spUrl = new URL(process.env.SUPABASE_URL || "");
+            const edUrl = new URL(process.env.EDGE_URL || "");
+            const allowed = ["127.0.0.1", "localhost"];
+            console.log("Resolved DB Host:", dbUrl.hostname);
+            console.log("Resolved Supabase Host:", spUrl.hostname);
+            console.log("Resolved Edge Functions Host:", edUrl.hostname);
+            if (!allowed.includes(dbUrl.hostname) || !allowed.includes(spUrl.hostname) || !allowed.includes(edUrl.hostname)) {
+              console.error("FATAL REFUSAL: Non-local host detected! Test suites must strictly run against 127.0.0.1 or localhost.");
+              process.exit(1);
+            }
+            console.log("Refusal guard verified: all 3 endpoints are local.");
+          '
+
+      - name: Seed Local Fixtures with Session Opt-In
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          node scripts/seed_local.mjs
+          node scripts/set_worker_config.mjs --target=local
+
+      - name: Run pgTAP Database Invariant Suites
+        run: npx supabase test db
+
+      - name: Run Automated Integration & Concurrency Test Suites
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          SUPABASE_URL: http://127.0.0.1:54321
+          EDGE_URL: http://127.0.0.1:54321/functions/v1
+        run: |
+          node tests/e2e/full_system_lifecycle.js
+          node tests/concurrency/booking_hold_concurrency.js
+          node tests/concurrency/ledger_concurrency_and_immutability.js
+          node tests/concurrency/payment_webhook_lifecycle.js
+          node tests/concurrency/payout_settlement_lifecycle.js
+          node tests/concurrency/walkin_vs_online_collision.js
+          node tests/concurrency/audit_notification_admin_lifecycle.js
+          node tests/monitoring/operational_alerts_test.js
+          node tests/proofs/owner_payout_reproducibility.js
+          node tests/proofs/owner_audit_proofs.js
+          node tests/api/payout_release_api_test.js
+
+  # --------------------------------------------------------------------------
+  # 3. Deploy to Staging (on push to main)
+  # --------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy Staging
+    runs-on: ubuntu-latest
+    needs: test-matrix
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Link Supabase Staging
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx supabase link --project-ref ${{ secrets.SUPABASE_STAGING_PROJECT_REF }}
+
+      - name: Push Database Migrations (Staging)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx supabase db push
+
+      - name: Synchronize Staging Worker Config
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_STAGING_DB_URL }}
+          NOTIFICATION_WORKER_URL: https://${{ secrets.SUPABASE_STAGING_PROJECT_REF }}.functions.supabase.co/notification-worker
+          WORKER_SECRET: ${{ secrets.INTERNAL_WORKER_SECRET }}
+        run: node scripts/set_worker_config.mjs --target=hosted
+
+      - name: Deploy Edge Functions (Staging)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          npx supabase functions deploy checkout
+          npx supabase functions deploy payment-webhook --no-verify-jwt
+          npx supabase functions deploy notification-worker --no-verify-jwt
+
+  # --------------------------------------------------------------------------
+  # 4. Deploy to Production (Manual Approval via GitHub Environment)
+  # --------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment: production
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Link Supabase Production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+
+      - name: Push Database Migrations (Production)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx supabase db push
+
+      - name: Synchronize Production Worker Config
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+          NOTIFICATION_WORKER_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.functions.supabase.co/notification-worker
+          WORKER_SECRET: ${{ secrets.INTERNAL_WORKER_SECRET }}
+        run: node scripts/set_worker_config.mjs --target=hosted
+
+      - name: Deploy Edge Functions (Production)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          npx supabase functions deploy checkout
+          npx supabase functions deploy payment-webhook --no-verify-jwt
+          npx supabase functions deploy notification-worker --no-verify-jwt

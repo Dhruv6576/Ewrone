@@ -1,0 +1,33 @@
+{
+  "name": "box-codex",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm --prefix apps/player run dev",
+    "build": "npm --prefix apps/player run build",
+    "dev:player": "npm --prefix apps/player run dev",
+    "build:player": "npm --prefix apps/player run build",
+    "dev:owner": "npm --prefix apps/owner run dev",
+    "build:owner": "npm --prefix apps/owner run build",
+    "dev:admin": "npm --prefix apps/admin run dev",
+    "build:admin": "npm --prefix apps/admin run build",
+    "gen:types": "supabase gen types typescript --local > packages/shared/src/database.types.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@ngrok/ngrok": "^1.7.0",
+    "pg": "^8.23.0"
+  }
+}
