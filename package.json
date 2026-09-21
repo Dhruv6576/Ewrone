@@ -26,6 +26,9 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@ngrok/ngrok": "^1.7.0",
     "pg": "^8.23.0"

@@ -15,10 +15,10 @@ cd box-codex
 ```
 
 ### 2. Configure Node.js Runtime
-Use Node.js 20 LTS as specified in `.nvmrc`:
+Use Node.js 22 LTS as specified in `.nvmrc`:
 ```bash
 nvm use
-# Or ensure node -v returns v20.x
+# Or ensure node -v returns v22.x
 node -v
 ```
 

@@ -1,8 +1,14 @@
-# Standalone Repository Git Cutover Runbook
+# Standalone Repository Git Cutover Record
 
-> [!WARNING]
-> **RUNBOOK ONLY — FOR MANUAL USER EXECUTION ONLY.**
-> Do **NOT** run these commands via automated agents. This runbook must be executed manually by the repository owner on the host workstation.
+> [!NOTE]
+> **CUTOVER COMPLETED ON 2026-09-21**
+> The standalone repository git cutover has been successfully executed.
+> - **Remote Repository:** [https://github.com/Dhruv6576/Ewrone.git](https://github.com/Dhruv6576/Ewrone.git)
+> - **Visibility:** Private
+> - **First Successful Pipeline Run:** [https://github.com/Dhruv6576/Ewrone/actions/runs/35632969125](https://github.com/Dhruv6576/Ewrone/actions/runs/35632969125)
+> - **Parent Repository Safeguarded:** `C:\Dhruv\Projectss` (`Shree-Hari-Electronics.git`) remains unchanged at commit `bb34e9868e6c9d6372c657f72a8a9909f0c13710`.
+> 
+> The steps below are retained for audit trail and historical reference; all manual execution steps are completed.
 
 ---
 
@@ -26,23 +32,23 @@ Before initializing the repository or staging files:
 
 ---
 
-## 3. Step-by-Step Cutover Runbook
+## 3. Step-by-Step Cutover Execution Reference (Completed)
 
-### Step A: Protect the Parent Repository
+### Step A: Protect the Parent Repository [COMPLETED]
 Ensure the parent `.git` remains completely untouched:
 ```powershell
 # Optional manual safety backup of parent .git
 Copy-Item -Path "C:\Dhruv\Projectss\.git" -Destination "C:\Dhruv\Projectss-git-parent-backup" -Recurse
 ```
 
-### Step B: Initialize Dedicated Git Repository Inside Box Codex
+### Step B: Initialize Dedicated Git Repository Inside Box Codex [COMPLETED]
 Change directory to the Box Codex project root and initialize Git:
 ```powershell
 cd "C:\Dhruv\Projectss\Box Codex"
 git init -b main
 ```
 
-### Step C: Confirm Sensitive File Exclusions
+### Step C: Confirm Sensitive File Exclusions [COMPLETED]
 Verify that `.gitignore` prevents tracking secrets, especially `supabase/functions/.env`:
 ```powershell
 # Run check-ignore probes. All four must return the ignored path:
@@ -53,13 +59,13 @@ git check-ignore apps/admin/.env.local
 ```
 *If any of these commands returns empty, STOP immediately. Do not proceed to `git add` until `.gitignore` is fixed.*
 
-### Step D: Stage Files for the Initial Commit
+### Step D: Stage Files for the Initial Commit [COMPLETED]
 Stage non-ignored files:
 ```powershell
 git add .
 ```
 
-### Step E: Pre-Commit Verification Commands
+### Step E: Pre-Commit Verification Commands [COMPLETED]
 Run these exact verification commands before committing:
 
 1. **Verify File Count**:
@@ -85,15 +91,15 @@ Run these exact verification commands before committing:
    git grep -i "BEGIN PRIVATE KEY" HEAD 2>$null
    ```
 
-### Step F: Create the Initial Commit
+### Step F: Create the Initial Commit [COMPLETED]
 Once verified clean:
 ```powershell
 git commit -m "feat(core): initial commit for Box Codex monorepo"
 ```
 
-### Step G: Connect Remote Origin & Push
-Create an empty private repository on GitHub (e.g. `Dhruv6576/box-codex`), link the remote, and push `main`:
+### Step G: Connect Remote Origin & Push [COMPLETED]
+Linked to private repository `https://github.com/Dhruv6576/Ewrone.git` and pushed `main`:
 ```powershell
-git remote add origin https://github.com/Dhruv6576/box-codex.git
+git remote add origin https://github.com/Dhruv6576/Ewrone.git
 git push -u origin main
 ```

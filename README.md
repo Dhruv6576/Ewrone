@@ -33,7 +33,7 @@ The repository is organized into three primary layers:
 
 ## Local Development & Quick Start
 
-1. **Prerequisites**: Node.js 20+, Docker Desktop, Supabase CLI (`v2.115.0+`).
+1. **Prerequisites**: Node.js 22+, Docker Desktop, Supabase CLI (`v2.115.0+`).
 2. **Start Local Supabase Backend**:
    ```bash
    npx supabase start
