@@ -33,27 +33,59 @@ The repository is organized into three primary layers:
 
 ## Local Development & Quick Start
 
-1. **Prerequisites**: Node.js 22+, Docker Desktop, Supabase CLI (`v2.115.0+`).
+### Default Path: Hosted Backend (No Docker Required)
+
+Frontend engineers do not need Docker or a local Supabase instance. Work directly against the hosted staging backend:
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Dhruv6576/Ewrone.git
+   cd Ewrone
+   ```
+2. **Install / Select Node.js 22**:
+   ```bash
+   # Verify with:
+   node -v
+   # (nvm-windows users: provide the full version, e.g. 'nvm use 22.11.0', because nvm-windows does not read .nvmrc)
+   ```
+3. **Install Dependencies**:
+   ```bash
+   npm ci
+   ```
+4. **Bootstrap Staging Environment**:
+   ```bash
+   node scripts/bootstrap.mjs --target=staging
+   ```
+5. **Run Portal Applications**:
+   ```bash
+   npm run dev:player   # http://localhost:3000 (Player Portal)
+   npm run dev:owner    # http://localhost:3001 (Unified Business Console)
+   npm run dev:admin    # http://localhost:3003 (Platform Admin)
+   ```
+
+---
+
+### Running the full stack locally (only needed for DB tests)
+
+If you are developing database migrations, running pgTAP tests, or executing the automated concurrency/proof test suites, Docker is required:
+
+1. **Prerequisites**: Docker Desktop running, Supabase CLI (`v2.115.0+`).
 2. **Start Local Supabase Backend**:
    ```bash
    npx supabase start
    ```
-3. **Seed Local Demo Fixtures**:
+3. **Seed Local Demo Fixtures & Worker**:
    ```bash
    node scripts/seed_local.mjs
-   node scripts/set_worker_config.mjs
+   node scripts/set_worker_config.mjs --target=local
    ```
-   > [!NOTE]
-   > The `app.allow_demo_seed` guard prevents accidental execution, not a determined one — any role that can connect can set it in its own session. The real controls are the CI prohibition on `--include-seed` and the file's absence from hosted contexts.
-4. **Run pgTAP Database Invariants**:
+4. **Bootstrap Local Environment**:
+   ```bash
+   node scripts/bootstrap.mjs --target=local
+   ```
+5. **Run Database Tests**:
    ```bash
    npx supabase test db
-   ```
-5. **Run Portal Applications**:
-   ```bash
-   npm run dev:player   # http://localhost:3000
-   npm run dev:owner    # http://localhost:3001 (Unified Business Console)
-   npm run dev:admin    # http://localhost:3003 (Platform Admin)
    ```
 
 ## Test Suite Execution Order
