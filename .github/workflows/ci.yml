@@ -194,6 +194,7 @@ EOF
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
           SUPABASE_URL: http://127.0.0.1:54321
           EDGE_URL: http://127.0.0.1:54321/functions/v1
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_TEST_WEBHOOK_SECRET }}
         run: |
           node tests/e2e/full_system_lifecycle.js
           node tests/concurrency/booking_hold_concurrency.js

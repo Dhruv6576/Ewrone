@@ -18,6 +18,8 @@
 
 const { Client } = require('pg');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const {
   EXPECTED_BASE_PROFILES,
   EXPECTED_BASE_PLAYERS,
@@ -33,7 +35,21 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'http://127.0.0.1:54321';
 const EDGE_URL = process.env.EDGE_URL || (process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL}/functions/v1` : 'http://127.0.0.1:54321/functions/v1');
 const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY || null;
-const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || 'local_whsec_test_secret_987654321';
+
+function getWebhookSecret() {
+  if (process.env.RAZORPAY_WEBHOOK_SECRET) {
+    return process.env.RAZORPAY_WEBHOOK_SECRET.split(',')[0].trim();
+  }
+  try {
+    const envPath = path.resolve(__dirname, '../../supabase/functions/.env');
+    if (fs.existsSync(envPath)) {
+      const match = fs.readFileSync(envPath, 'utf8').match(/RAZORPAY_WEBHOOK_SECRET=([^\r\n]+)/);
+      if (match) return match[1].split(',')[0].trim();
+    }
+  } catch (_) {}
+  return '';
+}
+const WEBHOOK_SECRET = getWebhookSecret();
 
 function signPayload(body, secret) {
   return crypto.createHmac('sha256', secret).update(body).digest('hex');
