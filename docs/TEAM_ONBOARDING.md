@@ -16,26 +16,28 @@ Welcome to the **Box Codex** project! This repository contains the unified monor
 
 Frontend engineers **do not need Docker or local Supabase**. Work directly against the hosted staging backend:
 
-1. **Clone the repository**:
+1. **Accept GitHub Invitation**:
+   Accept your repository invitation at [https://github.com/Dhruv6576/Ewrone/invitations](https://github.com/Dhruv6576/Ewrone/invitations) or via the email notification. Push access to create feature branches requires accepted collaborator status.
+2. **Clone the repository**:
    ```bash
    git clone https://github.com/Dhruv6576/Ewrone.git
    cd Ewrone
    ```
-2. **Select Node.js 22 LTS**:
+3. **Select Node.js 22 LTS**:
    ```bash
    node -v
    # (nvm-windows users: use 'nvm use 22.11.0' or your full installed version, as nvm-windows does not read .nvmrc)
    ```
-3. **Install dependencies**:
+4. **Install dependencies**:
    ```bash
    npm ci
    ```
-4. **Bootstrap Staging Environment**:
+5. **Bootstrap Staging Environment**:
    ```bash
    node scripts/bootstrap.mjs --target=staging
    ```
    This generates `apps/player/.env.local`, `apps/owner/.env.local`, and `apps/admin/.env.local` configured against the hosted staging project (`akbndqzrnqxyckldboaw`).
-5. **Run Portal Applications**:
+6. **Run Portal Applications**:
    ```bash
    npm run dev:player   # Player discovery & booking (http://localhost:3000)
    npm run dev:owner    # Business Console for venue owners (http://localhost:3001)
@@ -130,10 +132,11 @@ The following items are pending final deployment infrastructure and must not be 
 ---
 
 ## 6. Collaborator Onboarding
-
-Collaborator access to the GitHub repository is managed by the repository owner:
-- **Invite Path:** [Settings -> Collaborators](https://github.com/Dhruv6576/Ewrone/settings/access)
-- **Procedure:** All collaborators must be explicitly invited by username by the repository owner (`Dhruv6576`).
+ 
+ Collaborator access to the GitHub repository is managed by the repository owner:
+ - **Invite Path:** [Settings -> Collaborators](https://github.com/Dhruv6576/Ewrone/settings/access)
+ - **Accepting Invitations:** Invited team members must visit [https://github.com/Dhruv6576/Ewrone/invitations](https://github.com/Dhruv6576/Ewrone/invitations) to accept their invite before attempting to push feature branches.
+ - **Procedure:** All collaborators must be explicitly invited by username by the repository owner (`Dhruv6576`). Ensure write permissions are granted for branch creation and pull request submission.
 
 ---
 

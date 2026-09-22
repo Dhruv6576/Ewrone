@@ -1,25 +1,42 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const ADMIN_TEST_FILE = 'supabase/.admin-test.local';
-const HOSTED_ENV_FILE = 'supabase/.env.hosted';
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const options = {
+    url: null,
+    file: process.env.ADMIN_TEST_FILE || 'supabase/.admin-test.local',
+    hostedEnv: 'supabase/.env.hosted'
+  };
 
-function main() {
-  console.log('=== PART 6 — STAGING ADMIN LOGIN VERIFICATION ===\n');
+  for (const arg of args) {
+    if (arg.startsWith('--url=')) {
+      options.url = arg.split('=')[1].trim();
+    } else if (arg.startsWith('--file=')) {
+      options.file = arg.split('=')[1].trim();
+    }
+  }
+  return options;
+}
 
-  if (!fs.existsSync(ADMIN_TEST_FILE)) {
-    console.log('NOT RUN - file missing');
-    console.log(`Please create ${ADMIN_TEST_FILE} with the following two lines:`);
+async function main() {
+  console.log('=== STAGING ADMIN LOGIN VERIFICATION ===\n');
+  const options = parseArgs();
+
+  // 1. Check admin test file
+  if (!fs.existsSync(options.file)) {
+    console.log(`NOT RUN - could not resolve admin test file ('${options.file}')`);
+    console.log(`Please create ${options.file} with the following two lines:`);
     console.log('ADMIN_EMAIL=<staging_admin_email>');
     console.log('ADMIN_PASSWORD=<staging_admin_password>');
     console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
     process.exit(0);
   }
 
-  const raw = fs.readFileSync(ADMIN_TEST_FILE, 'utf8').trim();
+  const raw = fs.readFileSync(options.file, 'utf8').trim();
   if (raw.length === 0) {
-    console.log('NOT RUN - file empty (credentials missing)');
-    console.log(`Please populate ${ADMIN_TEST_FILE} with the following two lines:`);
+    console.log('NOT RUN - could not resolve credentials (file empty)');
+    console.log(`Please populate ${options.file} with the following two lines:`);
     console.log('ADMIN_EMAIL=<staging_admin_email>');
     console.log('ADMIN_PASSWORD=<staging_admin_password>');
     console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
@@ -29,11 +46,14 @@ function main() {
   const emailMatch = raw.match(/^ADMIN_EMAIL=(.*)$/m);
   const passMatch = raw.match(/^ADMIN_PASSWORD=(.*)$/m);
 
-  if (!emailMatch || !passMatch) {
-    console.log('NOT RUN - invalid format in file');
-    console.log(`Please ensure ${ADMIN_TEST_FILE} contains:`);
-    console.log('ADMIN_EMAIL=<staging_admin_email>');
-    console.log('ADMIN_PASSWORD=<staging_admin_password>');
+  if (!emailMatch) {
+    console.log('NOT RUN - could not resolve ADMIN_EMAIL');
+    console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
+    process.exit(0);
+  }
+
+  if (!passMatch) {
+    console.log('NOT RUN - could not resolve ADMIN_PASSWORD');
     console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
     process.exit(0);
   }
@@ -41,23 +61,59 @@ function main() {
   const email = emailMatch[1].trim().replace(/^['"]|['"]$/g, '');
   const password = passMatch[1].trim().replace(/^['"]|['"]$/g, '');
 
-  if (!email || !password) {
-    console.log('NOT RUN - credentials blank');
-    console.log(`Please populate ${ADMIN_TEST_FILE} with:`);
-    console.log('ADMIN_EMAIL=<staging_admin_email>');
-    console.log('ADMIN_PASSWORD=<staging_admin_password>');
+  if (!email) {
+    console.log('NOT RUN - could not resolve ADMIN_EMAIL (blank value)');
     console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
     process.exit(0);
   }
 
-  const hostedRaw = fs.readFileSync(HOSTED_ENV_FILE, 'utf8');
-  const urlMatch = hostedRaw.match(/^NEXT_PUBLIC_SUPABASE_URL=(.*)$/m);
-  const anonMatch = hostedRaw.match(/^NEXT_PUBLIC_SUPABASE_ANON_KEY=(.*)$/m);
+  if (!password) {
+    console.log('NOT RUN - could not resolve ADMIN_PASSWORD (blank value)');
+    console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
+    process.exit(0);
+  }
 
-  const supabaseUrl = urlMatch[1].trim().replace(/^['"]|['"]$/g, '');
-  const anonKey = anonMatch[1].trim().replace(/^['"]|['"]$/g, '');
+  // 2. Resolve hosted Supabase URL and Anon Key
+  let supabaseUrl = options.url;
+  let anonKey = null;
 
-  runLogin(supabaseUrl, anonKey, email, password);
+  if (fs.existsSync(options.hostedEnv)) {
+    const hostedRaw = fs.readFileSync(options.hostedEnv, 'utf8');
+
+    if (!supabaseUrl) {
+      const refMatch = hostedRaw.match(/^SUPABASE_STAGING_PROJECT_REF=(.*)$/m);
+      if (refMatch && refMatch[1].trim()) {
+        const ref = refMatch[1].trim().replace(/^['"]|['"]$/g, '');
+        supabaseUrl = `https://${ref}.supabase.co`;
+      } else {
+        const fallbackUrlMatch = hostedRaw.match(/^NEXT_PUBLIC_SUPABASE_URL=(.*)$/m);
+        if (fallbackUrlMatch && fallbackUrlMatch[1].trim()) {
+          supabaseUrl = fallbackUrlMatch[1].trim().replace(/^['"]|['"]$/g, '');
+        }
+      }
+    }
+
+    const anonMatch = hostedRaw.match(/^SUPABASE_STAGING_ANON_KEY=(.*)$/m) ||
+                      hostedRaw.match(/^NEXT_PUBLIC_SUPABASE_ANON_KEY=(.*)$/m);
+    if (anonMatch && anonMatch[1].trim()) {
+      anonKey = anonMatch[1].trim().replace(/^['"]|['"]$/g, '');
+    }
+  }
+
+  // Fail-closed guards: exit 0 with clear message instead of throwing TypeError
+  if (!supabaseUrl) {
+    console.log('NOT RUN - could not resolve base URL');
+    console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
+    process.exit(0);
+  }
+
+  if (!anonKey) {
+    console.log('NOT RUN - could not resolve anon key');
+    console.log('\nSTAGING ADMIN LOGIN: NOT RUN');
+    process.exit(0);
+  }
+
+  await runLogin(supabaseUrl, anonKey, email, password);
 }
 
 async function runLogin(supabaseUrl, anonKey, email, password) {
@@ -68,16 +124,17 @@ async function runLogin(supabaseUrl, anonKey, email, password) {
         'apikey': anonKey,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(15000)
     });
 
     const loginData = await loginRes.json().catch(() => ({}));
     const tokenLen = loginData.access_token ? loginData.access_token.length : 0;
 
-    console.log(`6.2 Password-grant login:`);
+    console.log(`Password-grant login:`);
     console.log(`  HTTP status: ${loginRes.status}`);
-    if (loginData.error_code || loginData.error) {
-      console.log(`  Error code: ${loginData.error_code || loginData.error}`);
+    if (loginData.error_code || loginData.error || loginData.msg) {
+      console.log(`  Error code: ${loginData.error_code || loginData.error || loginData.msg}`);
     }
     console.log(`  access_token length > 0: ${tokenLen > 0}`);
 
@@ -92,11 +149,12 @@ async function runLogin(supabaseUrl, anonKey, email, password) {
         'apikey': anonKey,
         'Authorization': `Bearer ${loginData.access_token}`,
         'Content-Type': 'application/json'
-      }
+      },
+      signal: AbortSignal.timeout(15000)
     });
 
-    const isAdmin = await adminRes.json();
-    console.log(`6.3 RPC is_platform_admin:`);
+    const isAdmin = await adminRes.json().catch(() => null);
+    console.log(`RPC is_platform_admin:`);
     console.log(`  HTTP status: ${adminRes.status}`);
     console.log(`  Raw boolean result: ${isAdmin}`);
 
