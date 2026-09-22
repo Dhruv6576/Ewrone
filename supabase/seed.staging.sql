@@ -211,7 +211,7 @@ begin
   from private.capabilities c
   where c.scope = 'turf'
     and c.code in (
-      'bookings.read', 'bookings.create_walkin', 'calendar.read',
+      'bookings.read', 'bookings.create_walkin', 'payments.record_offline', 'calendar.read',
       'slots.block', 'turf.read', 'listing.edit', 'audit.read'
     )
   on conflict (assignment_id, capability) do nothing;

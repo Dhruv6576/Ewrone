@@ -173,3 +173,87 @@ export async function requestRefund(
     p_idempotency_key: params.p_idempotency_key ?? null,
   });
 }
+
+export interface TurfBookingSettingsItem {
+  turf_id: string;
+  master_owner_id: string;
+  cancellation_policy_id: string | null;
+  advance_basis_points: number | null;
+  advance_fixed_per_slot_minor: number | null;
+  booking_horizon_days: number;
+  minimum_lead_minutes: number;
+  hold_seconds: number;
+}
+
+export interface BalanceCollectionResult {
+  booking_id: string;
+  payment_id: string;
+  payment_order_id: string;
+  amount_collected_minor: number;
+  balance_due_minor: number;
+  payment_method: 'cash' | 'upi' | 'card' | 'other';
+  status: string;
+}
+
+export interface BookingPaymentSummary {
+  booking_id: string;
+  reference_code: string;
+  status: string;
+  currency: string;
+  total_minor: number;
+  required_online_minor: number;
+  paid_minor: number;
+  balance_due_minor: number;
+  payment_mode: 'full' | 'advance';
+  balance_collected_at: string | null;
+  balance_collected_by: string | null;
+  balance_collection_method: string | null;
+}
+
+export async function ownerUpsertBookingSettings(
+  client: SupabaseClient,
+  params: {
+    p_turf_id: string;
+    p_advance_basis_points?: number | null;
+    p_advance_fixed_per_slot_minor?: number | null;
+    p_booking_horizon_days?: number | null;
+    p_minimum_lead_minutes?: number | null;
+    p_hold_seconds?: number | null;
+  }
+): Promise<{ data: TurfBookingSettingsItem | null; error: any }> {
+  return await client.rpc('owner_upsert_booking_settings', {
+    p_turf_id: params.p_turf_id,
+    p_advance_basis_points: params.p_advance_basis_points ?? null,
+    p_advance_fixed_per_slot_minor: params.p_advance_fixed_per_slot_minor ?? null,
+    p_booking_horizon_days: params.p_booking_horizon_days ?? null,
+    p_minimum_lead_minutes: params.p_minimum_lead_minutes ?? null,
+    p_hold_seconds: params.p_hold_seconds ?? null,
+  });
+}
+
+export async function ownerRecordBalanceCollection(
+  client: SupabaseClient,
+  params: {
+    p_booking_id: string;
+    p_amount_minor: number;
+    p_method: 'cash' | 'upi' | 'card' | 'other';
+    p_idempotency_key: string;
+  }
+): Promise<{ data: BalanceCollectionResult | null; error: any }> {
+  return await client.rpc('owner_record_balance_collection', {
+    p_booking_id: params.p_booking_id,
+    p_amount_minor: params.p_amount_minor,
+    p_method: params.p_method,
+    p_idempotency_key: params.p_idempotency_key,
+  });
+}
+
+export async function getBookingPaymentSummary(
+  client: SupabaseClient,
+  params: { p_booking_id: string }
+): Promise<{ data: BookingPaymentSummary | null; error: any }> {
+  return await client.rpc('get_booking_payment_summary', {
+    p_booking_id: params.p_booking_id,
+  });
+}
+
