@@ -10,8 +10,8 @@ Generated automatically from the database schema via `scripts/generate_api_docs.
 | Schema | Function Name | Arguments | Returns | Security | Capability / Caller (Convention) | Typical Error SQLSTATEs (Convention) |
 |:---|:---|:---|:---|:---|:---|:---|
 | `private` | `assert_within_operating_hours` | `p_resource_id uuid, p_starts_at timestamp with time zone, p_ends_at timestamp with time zone` | `void` | SECURITY DEFINER | service_role / internal | 42501 |
-| `private` | `can_turf` | `p_turf_id uuid, p_capability text` | `boolean` | SECURITY DEFINER | service_role / internal | 42501 |
 | `private` | `can_turf` | `p_user_id uuid, p_turf_id uuid, p_capability text` | `boolean` | SECURITY DEFINER | service_role / internal | 42501 |
+| `private` | `can_turf` | `p_turf_id uuid, p_capability text` | `boolean` | SECURITY DEFINER | service_role / internal | 42501 |
 | `private` | `check_journal_balance_record` | `p_journal_id uuid` | `void` | SECURITY DEFINER | service_role / internal | 42501 |
 | `private` | `check_ledger_invariants` | *none* | `jsonb` | SECURITY DEFINER | service_role / internal | 42501 |
 | `private` | `check_operational_health` | `p_stuck_threshold interval DEFAULT '00:15:00'::interval` | `jsonb` | SECURITY DEFINER | service_role / internal | 42501 |

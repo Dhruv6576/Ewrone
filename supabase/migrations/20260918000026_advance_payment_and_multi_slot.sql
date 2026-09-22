@@ -1236,3 +1236,334 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_booking_payment_summary(uuid) FROM public, anon;
 GRANT EXECUTE ON FUNCTION public.get_booking_payment_summary(uuid) TO authenticated, service_role;
+
+-- ============================================================================
+-- 12. REDEFINE private.confirm_booking_payment WITH BALANCE RECONCILIATION
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION private.confirm_booking_payment(
+  p_provider text,
+  p_provider_order_id text,
+  p_provider_payment_id text,
+  p_amount_minor bigint,
+  p_currency text DEFAULT 'INR',
+  p_event_type text DEFAULT 'payment.captured',
+  p_captured_at timestamptz DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, private, extensions, auth, pg_temp
+AS $$
+DECLARE
+  v_order record;
+  v_booking record;
+  v_payment record;
+  v_payment_id uuid;
+  v_acc_clearing uuid;
+  v_acc_commission uuid;
+  v_acc_owner uuid;
+  v_commission_minor bigint;
+  v_owner_minor bigint;
+  v_journal_key text;
+  v_journal_res jsonb;
+  v_now timestamptz := now();
+  v_owner_user_id uuid;
+  v_player_notif_id uuid;
+  v_owner_notif_id uuid;
+BEGIN
+  -- 1. Match payment order by provider order ID
+  SELECT * INTO v_order
+  FROM private.payment_orders
+  WHERE provider = p_provider
+    AND provider_order_id = p_provider_order_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ORDER_NOT_FOUND: Payment order with provider_order_id % not found', p_provider_order_id
+      USING ERRCODE = 'P0002';
+  END IF;
+
+  -- 2. Lock the booking record
+  SELECT * INTO v_booking
+  FROM public.bookings
+  WHERE id = v_order.booking_id
+  FOR UPDATE;
+
+  -- 3. Record or update private.payments record
+  SELECT * INTO v_payment
+  FROM private.payments
+  WHERE provider = p_provider
+    AND provider_payment_id = p_provider_payment_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    v_payment_id := gen_random_uuid();
+    INSERT INTO private.payments (
+      id, payment_order_id, provider, provider_payment_id,
+      amount_minor, currency, status, captured_at
+    ) VALUES (
+      v_payment_id, v_order.id, p_provider, p_provider_payment_id,
+      p_amount_minor, COALESCE(p_currency, 'INR'),
+      CASE WHEN p_event_type = 'payment.authorized' THEN 'authorized' ELSE 'captured' END,
+      CASE WHEN p_event_type = 'payment.authorized' THEN NULL ELSE COALESCE(p_captured_at, v_now) END
+    );
+  ELSE
+    v_payment_id := v_payment.id;
+    IF v_payment.status = 'captured' AND p_event_type = 'payment.authorized' THEN
+      NULL;
+    ELSIF p_event_type = 'payment.captured' AND v_payment.status <> 'captured' THEN
+      UPDATE private.payments
+      SET status = 'captured',
+          captured_at = COALESCE(p_captured_at, v_now)
+      WHERE id = v_payment_id;
+    END IF;
+  END IF;
+
+  -- 4. Authorization event handling
+  IF p_event_type = 'payment.authorized' AND v_booking.status = 'held' THEN
+    RETURN jsonb_build_object(
+      'status', 'authorized',
+      'booking_id', v_booking.id,
+      'payment_id', v_payment_id
+    );
+  END IF;
+
+  -- 5. Check Idempotency: already confirmed?
+  IF v_booking.status = 'confirmed' AND v_order.status = 'paid' THEN
+    RETURN jsonb_build_object(
+      'status', 'already_confirmed',
+      'booking_id', v_booking.id,
+      'payment_id', v_payment_id
+    );
+  END IF;
+
+  -- 6. Evaluate Hold Expiry / Availability Invariants
+  IF v_booking.status = 'held' AND v_booking.hold_expires_at > v_now THEN
+    -- Confirm booking and reconcile balance from actual captured payments
+    UPDATE public.bookings
+    SET status = 'confirmed',
+        confirmed_at = v_now,
+        payment_exception_reason = NULL,
+        balance_due_minor = GREATEST(0, total_minor - (
+          SELECT COALESCE(SUM(p.amount_minor), 0)
+          FROM private.payments p
+          JOIN private.payment_orders o ON o.id = p.payment_order_id
+          WHERE o.booking_id = v_booking.id AND p.status = 'captured'
+        ))
+    WHERE id = v_booking.id;
+
+    -- Confirm inventory allocation and CLEAR expires_at so it remains permanently locked
+    UPDATE public.inventory_allocations
+    SET kind = 'booking',
+        expires_at = NULL
+    WHERE booking_id = v_booking.id;
+
+    -- Mark payment order paid
+    UPDATE private.payment_orders
+    SET status = 'paid'
+    WHERE id = v_order.id;
+
+    -- Double-entry ledger journal posting
+    SELECT id INTO v_acc_clearing
+    FROM private.ledger_accounts
+    WHERE code = 'gateway_clearing' AND currency = v_booking.currency;
+
+    SELECT id INTO v_acc_commission
+    FROM private.ledger_accounts
+    WHERE code = 'platform_commission' AND currency = v_booking.currency;
+
+    v_acc_owner := private.get_or_create_owner_account(v_booking.master_owner_id, 'owner_payable', v_booking.currency);
+
+    v_commission_minor := COALESCE((v_booking.commission_snapshot->>'estimated_commission_minor')::bigint, round((p_amount_minor * 1000) / 10000.0));
+    v_owner_minor := p_amount_minor - v_commission_minor;
+
+    v_journal_key := format('pay_%s_captured', p_provider_payment_id);
+    v_journal_res := private.post_journal(
+      p_event_key => v_journal_key,
+      p_event_type => 'payment_captured',
+      p_currency => v_booking.currency,
+      p_booking_id => v_booking.id,
+      p_entries => jsonb_build_array(
+        jsonb_build_object('account_id', v_acc_clearing, 'amount_minor', p_amount_minor),
+        jsonb_build_object('account_id', v_acc_owner, 'amount_minor', -v_owner_minor),
+        jsonb_build_object('account_id', v_acc_commission, 'amount_minor', -v_commission_minor)
+      )
+    );
+
+    -- Booking event log
+    INSERT INTO public.booking_events (
+      booking_id, event_type, public_summary
+    ) VALUES (
+      v_booking.id, 'payment_confirmed', format('Payment captured: %s', p_provider_payment_id)
+    );
+
+    -- Outbox event for booking confirmation
+    INSERT INTO private.outbox_events (
+      topic, aggregate_type, aggregate_id, dedupe_key, payload
+    ) VALUES (
+      'booking.confirmed', 'booking', v_booking.id,
+      format('booking_confirmed_%s', v_booking.id),
+      jsonb_build_object(
+        'booking_id', v_booking.id,
+        'master_owner_id', v_booking.master_owner_id,
+        'turf_id', v_booking.turf_id,
+        'payment_id', v_payment_id,
+        'amount_minor', p_amount_minor
+      )
+    );
+
+    -- Integration Fix: Dispatch Multi-channel Notifications to Player & Master Owner
+    SELECT owner_user_id INTO v_owner_user_id
+    FROM public.master_owners
+    WHERE id = v_booking.master_owner_id;
+
+    IF v_booking.player_user_id IS NOT NULL THEN
+      v_player_notif_id := private.queue_notification(
+        v_booking.player_user_id,
+        'booking.confirmed',
+        'Booking Confirmed!',
+        format('Your booking (Ref: %s) is confirmed for ₹%s.', v_booking.reference_code, (p_amount_minor/100)::text),
+        format('/bookings/%s', v_booking.id),
+        ARRAY['push', 'sms', 'email']
+      );
+    END IF;
+
+    IF v_owner_user_id IS NOT NULL THEN
+      v_owner_notif_id := private.queue_notification(
+        v_owner_user_id,
+        'booking.new_confirmed',
+        'New Confirmed Booking',
+        format('New booking received (Ref: %s) for ₹%s.', v_booking.reference_code, (p_amount_minor/100)::text),
+        format('/owner/bookings/%s', v_booking.id),
+        ARRAY['push', 'email']
+      );
+    END IF;
+
+    -- Integration Fix: Business Audit Event Logging
+    PERFORM private.log_audit_event(
+      v_booking.master_owner_id,
+      v_booking.turf_id,
+      COALESCE(v_booking.player_user_id, auth.uid()),
+      'gateway',
+      'booking.confirm',
+      'booking',
+      v_booking.id,
+      jsonb_build_object('status', 'held'),
+      jsonb_build_object('status', 'confirmed', 'payment_id', v_payment_id, 'amount_minor', p_amount_minor),
+      format('Payment captured by %s (%s)', p_provider, p_provider_payment_id)
+    );
+
+    RETURN jsonb_build_object(
+      'status', 'confirmed',
+      'booking_id', v_booking.id,
+      'payment_id', v_payment_id,
+      'journal_status', v_journal_res->>'status',
+      'player_notif_id', v_player_notif_id,
+      'owner_notif_id', v_owner_notif_id
+    );
+
+  -- Scenario B: §7.5 Capture-After-Hold-Expiry Race
+  ELSIF v_booking.status IN ('expired', 'held') AND (v_booking.hold_expires_at <= v_now OR v_booking.status = 'expired') THEN
+    -- Transition booking to payment_exception and reconcile balance
+    UPDATE public.bookings
+    SET status = 'payment_exception',
+        payment_exception_reason = 'Payment captured after hold expiry (§7.5)',
+        balance_due_minor = GREATEST(0, total_minor - (
+          SELECT COALESCE(SUM(p.amount_minor), 0)
+          FROM private.payments p
+          JOIN private.payment_orders o ON o.id = p.payment_order_id
+          WHERE o.booking_id = v_booking.id AND p.status = 'captured'
+        ))
+    WHERE id = v_booking.id;
+
+    -- Ensure allocation is marked released
+    UPDATE public.inventory_allocations
+    SET released_at = COALESCE(released_at, v_now)
+    WHERE booking_id = v_booking.id
+      AND kind = 'hold'
+      AND released_at IS NULL;
+
+    -- Post suspense ledger journal
+    SELECT id INTO v_acc_clearing
+    FROM private.ledger_accounts
+    WHERE code = 'gateway_clearing' AND currency = v_booking.currency;
+
+    SELECT id INTO v_acc_commission
+    FROM private.ledger_accounts
+    WHERE code = 'platform_receivable' AND currency = v_booking.currency;
+
+    v_journal_key := format('pay_%s_exception', p_provider_payment_id);
+    v_journal_res := private.post_journal(
+      p_event_key => v_journal_key,
+      p_event_type => 'payment_exception',
+      p_currency => v_booking.currency,
+      p_booking_id => v_booking.id,
+      p_entries => jsonb_build_array(
+        jsonb_build_object('account_id', v_acc_clearing, 'amount_minor', p_amount_minor),
+        jsonb_build_object('account_id', v_acc_commission, 'amount_minor', -p_amount_minor)
+      )
+    );
+
+    -- Queue automatic refund in private.refunds
+    INSERT INTO private.refunds (
+      payment_id, amount_minor, reason, status, idempotency_key
+    ) VALUES (
+      v_payment_id, p_amount_minor, 'Hold expired before payment capture (§7.5)',
+      'requested', format('refund_%s', p_provider_payment_id)
+    )
+    ON CONFLICT (idempotency_key) DO NOTHING;
+
+    -- Insert Outbox event for refund processing worker
+    INSERT INTO private.outbox_events (
+      topic, aggregate_type, aggregate_id, dedupe_key, payload
+    ) VALUES (
+      'payment.refund_required', 'payment', v_payment_id,
+      format('refund_required_%s', p_provider_payment_id),
+      jsonb_build_object(
+        'payment_id', v_payment_id,
+        'booking_id', v_booking.id,
+        'amount_minor', p_amount_minor,
+        'reason', 'Hold expired before payment capture (§7.5)'
+      )
+    )
+    ON CONFLICT (dedupe_key) DO NOTHING;
+
+    -- Audit log
+    INSERT INTO public.booking_events (
+      booking_id, event_type, public_summary
+    ) VALUES (
+      v_booking.id, 'payment_expired_exception',
+      format('Late capture received for expired hold: %s. Refund queued.', p_provider_payment_id)
+    );
+
+    RETURN jsonb_build_object(
+      'status', 'payment_exception',
+      'booking_id', v_booking.id,
+      'payment_id', v_payment_id,
+      'refund_queued', true
+    );
+  ELSE
+    UPDATE public.bookings
+    SET status = 'payment_exception',
+        payment_exception_reason = format('Payment captured on booking in %s state', v_booking.status),
+        balance_due_minor = GREATEST(0, total_minor - (
+          SELECT COALESCE(SUM(p.amount_minor), 0)
+          FROM private.payments p
+          JOIN private.payment_orders o ON o.id = p.payment_order_id
+          WHERE o.booking_id = v_booking.id AND p.status = 'captured'
+        ))
+    WHERE id = v_booking.id;
+
+    RETURN jsonb_build_object(
+      'status', 'payment_exception',
+      'booking_id', v_booking.id,
+      'payment_id', v_payment_id
+    );
+  END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.confirm_booking_payment(text, text, text, bigint, text, text, timestamptz) FROM public;
+GRANT EXECUTE ON FUNCTION private.confirm_booking_payment(text, text, text, bigint, text, text, timestamptz) TO authenticated, service_role;
+

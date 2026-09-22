@@ -138,13 +138,28 @@ public.create_booking_hold(
 ### 4.3 Online Checkout & Payment Orders
 Online payments use `public.create_or_get_payment_order(p_booking_id, p_idempotency_key, p_purpose)`.
 - `p_purpose` allowed: `'initial'`, `'advance'`, `'full'`.
+- **Option A Balance Reconciliation**: When a player completes payment online (whether advance or full), `private.confirm_booking_payment` dynamically reconciles `balance_due_minor` in the database:
+  ```sql
+  balance_due_minor = greatest(0, total_minor - (actual captured payments))
+  ```
+  If a booking is paid fully online via `p_purpose = 'full'`, `balance_due_minor` is automatically set to `0` upon confirmation, preventing any duplicate venue balance collection.
 - **Venue-Only Invariant**: Calling `create_or_get_payment_order` with `p_purpose = 'balance'` is strictly blocked and raises:
   ```
   BALANCE_VENUE_ONLY: Outstanding balance must be collected at the venue (errcode: 22023)
   ```
 - **Positive Amount Guard**: Zero or negative payment order amounts raise `NO_BALANCE_DUE (22023)`.
 
-### 4.4 `public.owner_record_balance_collection`
+### 4.4 Mode Echo Invariant & Frontend Rendering Guidelines (CRITICAL)
+- **Effective Mode vs Requested Mode**: The `payment_mode` returned in quotes and holds is the **EFFECTIVE mode**, not the requested mode.
+- **100% Advance Policy Echo**: When the owner's policy requires 100% advance (`advance_basis_points = 10000`, which is the current staging default), passing `p_payment_mode = 'auto'` or `'advance'` will return `"payment_mode": "full"`.
+- **Render Invariant**: The frontend UI **must render directly from `required_online_minor` and `balance_due_minor`**, and must **NEVER infer the player's intent or payment breakdown from `payment_mode` alone**.
+  - If `balance_due_minor > 0`: Display the required online amount and the venue balance due.
+  - If `balance_due_minor == 0`: Display full payment required online.
+- **Slot Duration Invariant ('fixed_per_slot')**: "Fixed per slot" applies **per booking increment** (`resource.booking_increment_minutes`), NOT a universal wall-clock hour:
+  - Match Pitch A (`30m` increment): 2 hours = 4 slots. Fixed advance is `4 * advance_fixed_per_slot_minor`.
+  - Arena Pitches & Center Court (`60m` increment): 2 hours = 2 slots. Fixed advance is `2 * advance_fixed_per_slot_minor`.
+
+### 4.5 `public.owner_record_balance_collection`
 Enables counter staff and venue managers to record offline cash, UPI, or card collections.
 
 ```sql
@@ -162,7 +177,7 @@ public.owner_record_balance_collection(
 - **Validation**: `p_amount_minor > 0` and `p_amount_minor <= balance_due_minor`. Attempting to collect more than outstanding balance or after full collection raises `NO_BALANCE_DUE` or `AMOUNT_EXCEEDS_BALANCE`.
 - **Audit Logging**: Emits immutable business audit event `booking.balance_collected` with actor type `'user'`.
 
-### 4.5 `public.get_booking_payment_summary`
+### 4.6 `public.get_booking_payment_summary`
 Returns an authoritative summary of paid and remaining balances.
 
 ```sql
