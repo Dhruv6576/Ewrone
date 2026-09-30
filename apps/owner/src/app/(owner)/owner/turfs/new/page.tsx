@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient, extractDatabaseErrorObject, ExtractedDatabaseError } from '@boxcodex/shared';
-import { Building2, Save, Send, AlertCircle, CheckCircle, MapPin, Sparkles, Layers } from 'lucide-react';
+import { Building2, Save, Send, AlertCircle, CheckCircle, MapPin, Sparkles, Layers, ImagePlus, X } from 'lucide-react';
 
 interface AmenityItem {
   code: string;
@@ -29,8 +29,7 @@ export default function OnboardTurfPage() {
   const [city, setCity] = useState('Bengaluru');
   const [addressText, setAddressText] = useState('');
   const [description, setDescription] = useState('');
-  const [lat, setLat] = useState('12.9716');
-  const [lng, setLng] = useState('77.6413');
+  const [images, setImages] = useState<File[]>([]);
 
   // Amenities from DB
   const [availableAmenities, setAvailableAmenities] = useState<AmenityItem[]>([]);
@@ -65,11 +64,8 @@ export default function OnboardTurfPage() {
         if (error) throw error;
         if (data && data.length > 0) {
           setAvailableAmenities(data);
-          // Default selection: floodlights and changing_room if present
-          const defaults = data
-            .filter((a) => ['floodlights', 'changing_room', 'parking'].includes(a.code))
-            .map((a) => a.code);
-          setSelectedAmenities(defaults);
+          // Do not pre-select any amenities
+          setSelectedAmenities([]);
         }
       } catch (err: unknown) {
         console.error('Failed to load amenities:', err);
@@ -96,13 +92,20 @@ export default function OnboardTurfPage() {
     try {
       // 1. Validation
       if (!name.trim()) {
-        throw { message: 'Venue name is required', code: '22023' };
+        setErrorInfo({ message: 'Venue name is required', code: 'VALIDATION' } as ExtractedDatabaseError);
+        return;
       }
       if (!city.trim()) {
-        throw { message: 'City is required', code: '22023' };
+        setErrorInfo({ message: 'City is required', code: 'VALIDATION' } as ExtractedDatabaseError);
+        return;
       }
       if (!addressText.trim()) {
-        throw { message: 'Physical address is required', code: '22023' };
+        setErrorInfo({ message: 'Physical address is required', code: 'VALIDATION' } as ExtractedDatabaseError);
+        return;
+      }
+      if (images.length === 0) {
+        setErrorInfo({ message: 'At least one venue image is required', code: 'VALIDATION' } as ExtractedDatabaseError);
+        return;
       }
 
       // 2. Resolve Master Owner ID
@@ -111,14 +114,15 @@ export default function OnboardTurfPage() {
       const masterOwnerId = context?.master_owner_accounts?.[0]?.id;
 
       if (!masterOwnerId) {
-        throw {
+        setErrorInfo({
           message: 'No active or onboarding master owner account found for this user',
           code: '42501',
-        };
+        } as ExtractedDatabaseError);
+        return;
       }
 
-      // 3. Location Point WKT
-      const pointWkt = `POINT(${parseFloat(lng) || 77.6413} ${parseFloat(lat) || 12.9716})`;
+      // 3. Location Point WKT (Defaulting to a central coordinate since UI fields are removed)
+      const pointWkt = `POINT(77.6413 12.9716)`;
 
       // 4. Create Draft Turf via public.create_turf RPC
       const { data: newTurfId, error: createErr } = await supabase.rpc('create_turf', {
@@ -239,13 +243,13 @@ export default function OnboardTurfPage() {
   };
 
   return (
-    <div className="max-w-3xl space-y-6 pb-16">
+    <div className="w-full max-w-3xl mx-auto space-y-6 pb-16">
       <div>
-        <h1 className="text-2xl font-bold text-neutral-100 flex items-center gap-2">
-          <Building2 className="w-6 h-6 text-neutral-200" />
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2.5">
+          <Building2 className="w-6 h-6 text-neutral-900 dark:text-white" />
           Venue Onboarding Wizard
         </h1>
-        <p className="text-xs text-neutral-400 mt-1">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
           Register a new sports arena, configure amenities, court specs, and submit for platform review.
         </p>
       </div>
@@ -272,25 +276,25 @@ export default function OnboardTurfPage() {
           </div>
           <p className="text-red-200 pl-6">{errorInfo.message}</p>
           {errorInfo.details && (
-            <p className="text-neutral-400 pl-6 text-[11px]">Details: {errorInfo.details}</p>
+            <p className="text-neutral-500 dark:text-neutral-400 pl-6 text-[11px]">Details: {errorInfo.details}</p>
           )}
           {errorInfo.hint && (
-            <p className="text-neutral-400 pl-6 text-[11px]">Hint: {errorInfo.hint}</p>
+            <p className="text-neutral-500 dark:text-neutral-400 pl-6 text-[11px]">Hint: {errorInfo.hint}</p>
           )}
         </div>
       )}
 
-      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl space-y-6">
+      <div className="p-8 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 dark:hover:border-primary transition-all duration-300 rounded-2xl shadow-sm dark:hover:shadow-[0_0_20px_-5px_var(--color-primary)] space-y-8">
         {/* Section 1: Venue Information */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-neutral-200 flex items-center gap-2 border-b border-neutral-800 pb-2">
-            <MapPin className="w-4 h-4 text-neutral-200" />
+          <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-200 flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 pb-3">
+            <MapPin className="w-5 h-5 text-neutral-900" />
             1. Core Venue Details
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">
+              <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">
                 Venue Name <span className="text-red-400">*</span>
               </label>
               <input
@@ -298,12 +302,12 @@ export default function OnboardTurfPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Apex Sports Arena"
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:focus:border-primary focus:ring-1 focus:ring-neutral-900 dark:focus:ring-primary"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">
+              <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">
                 City <span className="text-red-400">*</span>
               </label>
               <input
@@ -311,13 +315,13 @@ export default function OnboardTurfPage() {
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 placeholder="e.g. Bengaluru"
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:focus:border-primary focus:ring-1 focus:ring-neutral-900 dark:focus:ring-primary"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-neutral-300 mb-1">
+            <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">
               Physical Address <span className="text-red-400">*</span>
             </label>
             <input
@@ -325,54 +329,80 @@ export default function OnboardTurfPage() {
               value={addressText}
               onChange={(e) => setAddressText(e.target.value)}
               placeholder="Plot No., Street, Area, Landmark"
-              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+              className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:focus:border-primary focus:ring-1 focus:ring-neutral-900 dark:focus:ring-primary"
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">Latitude</label>
-              <input
-                type="text"
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
-                placeholder="12.9716"
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">Longitude</label>
-              <input
-                type="text"
-                value={lng}
-                onChange={(e) => setLng(e.target.value)}
-                placeholder="77.6413"
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white font-mono"
-              />
-            </div>
-          </div>
-
           <div>
-            <label className="block text-xs font-semibold text-neutral-300 mb-1">Venue Description</label>
+            <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">Venue Description</label>
             <textarea
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe playing surfaces, lighting quality, seating, and special amenities..."
-              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+              className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:focus:border-primary focus:ring-1 focus:ring-neutral-900 dark:focus:ring-primary"
             />
           </div>
         </div>
 
+        {/* NEW Section: Image Upload */}
+        <div className="space-y-4">
+          <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-200 flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 pb-3">
+            <ImagePlus className="w-5 h-5 text-neutral-900" />
+            Images & Media
+          </h2>
+          <div className="space-y-3">
+            <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">
+              Venue Photos <span className="text-red-400">*</span>
+            </label>
+            <div className="border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-2xl p-6 bg-neutral-50 dark:bg-neutral-950 flex flex-col items-center justify-center text-center transition-all cursor-pointer relative group overflow-hidden dark:hover:border-primary">
+              <span className="absolute inset-0 bg-black scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500 ease-out z-0"></span>
+              <input 
+                type="file" 
+                multiple 
+                accept="image/*" 
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    setImages((prev) => [...prev, ...Array.from(e.target.files as FileList)]);
+                  }
+                }}
+              />
+              <div className="w-12 h-12 bg-white dark:bg-neutral-900 rounded-full flex items-center justify-center border border-neutral-200 dark:border-neutral-800 shadow-sm mb-3 pointer-events-none transition group-hover:scale-105 relative z-10 dark:group-hover:border-primary">
+                <ImagePlus className="w-5 h-5 text-neutral-400 dark:group-hover:text-primary transition-colors" />
+              </div>
+              <p className="text-sm font-bold text-neutral-700 dark:text-neutral-300 pointer-events-none relative z-10 dark:group-hover:text-primary transition-colors">Click or drag images to upload</p>
+              <p className="text-[11px] text-neutral-500 mt-1 pointer-events-none relative z-10 dark:group-hover:text-primary/70 transition-colors">High resolution JPEG or PNG. Max 5MB each.</p>
+            </div>
+
+            {images.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mt-4">
+                {images.map((img, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-neutral-200 bg-neutral-100 flex items-center justify-center group/img">
+                    <img src={URL.createObjectURL(img)} alt="preview" className="object-cover w-full h-full" />
+                    <button 
+                      type="button" 
+                      className="absolute top-2 right-2 p-1.5 bg-black/60 rounded-full text-white opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-red-500"
+                      onClick={() => setImages(images.filter((_, i) => i !== idx))}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Section 2: Validated Amenities from Database */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-neutral-200 flex items-center gap-2 border-b border-neutral-800 pb-2">
-            <Sparkles className="w-4 h-4 text-neutral-200" />
+        <div className="space-y-4">
+          <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-200 flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 pb-3">
+            <Sparkles className="w-5 h-5 text-neutral-900" />
             2. Amenities & Facilities (Validated against Database)
           </h2>
 
           {loadingAmenities ? (
-            <div className="text-xs text-neutral-400 py-2 animate-pulse">Loading verified amenities...</div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 py-2 animate-pulse">Loading verified amenities...</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {availableAmenities.map((amenity) => {
@@ -380,19 +410,21 @@ export default function OnboardTurfPage() {
                 return (
                   <label
                     key={amenity.code}
-                    className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs cursor-pointer transition ${
-                      isSelected
-                        ? 'bg-neutral-900 dark:bg-white/10 border-neutral-900 dark:border-white/40 text-neutral-300'
-                        : 'bg-neutral-950 border-neutral-800 text-neutral-300 hover:border-neutral-700'
-                    }`}
+                    className={`relative overflow-hidden flex items-center gap-3 p-3 rounded-xl border text-sm font-semibold cursor-pointer group transition-all duration-300 ${isSelected
+                        ? 'bg-neutral-900 dark:bg-primary/20 border-neutral-900 dark:border-primary/50 text-white dark:text-primary'
+                        : 'bg-neutral-50 dark:bg-neutral-950 border-neutral-300 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 dark:hover:border-primary'
+                      }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleAmenity(amenity.code)}
-                      className="rounded border-neutral-700 text-neutral-900 dark:text-white focus:ring-neutral-900 dark:ring-white h-3.5 w-3.5"
-                    />
-                    <span>{amenity.name}</span>
+                    <span className="absolute inset-0 bg-black scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500 ease-out z-0"></span>
+                    <div className="relative z-10 flex items-center gap-3 w-full dark:group-hover:text-primary transition-colors duration-300">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleAmenity(amenity.code)}
+                        className="rounded border-neutral-700 text-neutral-900 dark:text-primary focus:ring-neutral-900 dark:focus:ring-primary h-3.5 w-3.5 dark:checked:bg-primary dark:checked:border-primary"
+                      />
+                      <span>{amenity.name}</span>
+                    </div>
                   </label>
                 );
               })}
@@ -402,25 +434,25 @@ export default function OnboardTurfPage() {
 
         {/* Section 3: Initial Resource / Court */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-neutral-200 flex items-center gap-2 border-b border-neutral-800 pb-2">
-            <Layers className="w-4 h-4 text-neutral-200" />
+          <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-200 flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 pb-3">
+            <Layers className="w-5 h-5 text-neutral-900" />
             3. Court & Resource Configuration
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">Court Name</label>
+              <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">Court Name</label>
               <input
                 type="text"
                 value={courtName}
                 onChange={(e) => setCourtName(e.target.value)}
                 placeholder="Court 1 (Box Pitch)"
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:border-white focus:ring-1 focus:ring-neutral-900"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">Increment (min)</label>
+              <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">Increment (min)</label>
               <input
                 type="number"
                 step="15"
@@ -428,12 +460,12 @@ export default function OnboardTurfPage() {
                 max="120"
                 value={bookingIncrement}
                 onChange={(e) => setBookingIncrement(parseInt(e.target.value) || 30)}
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:border-white focus:ring-1 focus:ring-neutral-900"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">Min Duration (min)</label>
+              <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">Min Duration (min)</label>
               <input
                 type="number"
                 step="30"
@@ -441,40 +473,40 @@ export default function OnboardTurfPage() {
                 max="180"
                 value={minDuration}
                 onChange={(e) => setMinDuration(parseInt(e.target.value) || 60)}
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:border-white focus:ring-1 focus:ring-neutral-900"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">Opening Time (IST)</label>
+              <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">Opening Time (IST)</label>
               <input
                 type="time"
                 value={openTime}
                 onChange={(e) => setOpenTime(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:border-white focus:ring-1 focus:ring-neutral-900"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">Closing Time (IST)</label>
+              <label className="block text-[11px] font-bold text-neutral-900 dark:text-neutral-300 uppercase tracking-wider mb-2">Closing Time (IST)</label>
               <input
                 type="time"
                 value={closeTime}
                 onChange={(e) => setCloseTime(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100 text-sm focus:outline-none focus:border-neutral-900 dark:border-white focus:ring-1 focus:ring-neutral-900"
               />
             </div>
           </div>
         </div>
 
         {/* Form Actions */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-neutral-800">
+        <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-neutral-300 dark:border-neutral-800">
           <button
             type="button"
             disabled={submitting}
             onClick={() => handleSave(false)}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-neutral-800 dark:text-neutral-200 rounded-xl text-sm font-bold transition disabled:opacity-50"
           >
             <Save className="w-4 h-4" /> Save as Draft
           </button>
@@ -482,9 +514,12 @@ export default function OnboardTurfPage() {
             type="button"
             disabled={submitting}
             onClick={() => handleSave(true)}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-neutral-600 hover:bg-neutral-900 dark:bg-white text-white rounded-lg text-xs font-semibold transition disabled:opacity-50 shadow-lg shadow-neutral-950"
+            className="relative overflow-hidden group flex-1 flex items-center justify-center gap-2 py-3 bg-neutral-900 hover:bg-black dark:bg-primary dark:text-black text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50 shadow-lg shadow-neutral-950/20 dark:shadow-primary/20"
           >
-            <Send className="w-4 h-4" /> Save & Submit for Approval
+            <span className="absolute inset-0 w-full h-full bg-black scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500 ease-out z-0"></span>
+            <div className="relative z-10 flex items-center gap-2 dark:group-hover:text-primary transition-colors duration-300">
+              <Send className="w-4 h-4" /> Save & Submit for Approval
+            </div>
           </button>
         </div>
       </div>

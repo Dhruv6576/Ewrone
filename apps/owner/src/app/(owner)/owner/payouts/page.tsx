@@ -155,8 +155,8 @@ export default function MasterOwnerPayouts() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-100">Consolidated Payouts & Statements</h1>
-          <p className="text-xs text-neutral-400 mt-1">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Consolidated Payouts & Statements</h1>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
             Track gross bookings, platform commissions, financial statements, and plan settlements.
           </p>
         </div>
@@ -181,16 +181,16 @@ export default function MasterOwnerPayouts() {
 
       {/* Financial Summary Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
-          <span className="text-xs font-semibold text-neutral-400">Gross Volume</span>
-          <p className="text-2xl font-bold text-neutral-100 mt-2">
+        <div className="p-5 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+          <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">Gross Volume</span>
+          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
             {formatINR(summary?.gross_volume_minor ?? 0)}
           </p>
           <p className="text-[11px] text-neutral-500 mt-1">Total revenue collected</p>
         </div>
 
-        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
-          <div className="flex items-center justify-between text-neutral-400">
+        <div className="p-5 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+          <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400">
             <span className="text-xs font-semibold">Platform Commission</span>
             <Percent className="w-4 h-4 text-amber-400" />
           </div>
@@ -200,16 +200,16 @@ export default function MasterOwnerPayouts() {
           <p className="text-[11px] text-neutral-500 mt-1">Contractual commission deduction</p>
         </div>
 
-        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
-          <span className="text-xs font-semibold text-neutral-400">Settled Payouts</span>
+        <div className="p-5 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+          <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">Settled Payouts</span>
           <p className="text-2xl font-bold text-neutral-200 mt-2">
             {formatINR(summary?.settled_payouts_minor ?? 0)}
           </p>
           <p className="text-[11px] text-neutral-500 mt-1">Released to bank account</p>
         </div>
 
-        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
-          <span className="text-xs font-semibold text-neutral-400">Eligible Balance</span>
+        <div className="p-5 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+          <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">Eligible Balance</span>
           <p className="text-2xl font-bold text-blue-400 mt-2">
             {formatINR(summary?.eligible_payout_minor ?? 0)}
           </p>
@@ -218,43 +218,43 @@ export default function MasterOwnerPayouts() {
       </div>
 
       {/* Accounting Statement */}
-      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl">
-        <h2 className="text-sm font-bold text-neutral-100 mb-4 flex items-center gap-2">
+      <div className="p-6 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+        <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-4 flex items-center gap-2">
           <FileText className="w-4 h-4 text-neutral-200" />
           Ledger Accounting Statement
         </h2>
         {loading ? (
-          <div className="text-xs text-neutral-400">Loading statement...</div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading statement...</div>
         ) : isStatementEmpty ? (
-          <div className="text-xs text-neutral-500 py-8 text-center border border-dashed border-neutral-800 rounded-lg">
+          <div className="text-xs text-neutral-500 py-8 text-center border border-dashed border-neutral-300 dark:border-neutral-800 rounded-lg">
             No ledger transactions or financial balances recorded for this master owner account yet.
           </div>
         ) : (
           <div className="space-y-6">
             {/* Ledger Balances */}
             <div>
-              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
                 Double-Entry Ledger Net Balances
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 bg-neutral-950 border border-neutral-850 rounded-lg">
-                  <span className="text-xs text-neutral-400">Gateway Clearing Net</span>
-                  <p className="text-lg font-bold text-neutral-100 mt-1">
+                <div className="p-4 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Gateway Clearing Net</span>
+                  <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mt-1">
                     {formatINR(statement.ledger_balances.gateway_clearing_net)}
                   </p>
                   <p className="text-[11px] text-neutral-500 mt-0.5">Total collected through payment gateway</p>
                 </div>
 
-                <div className="p-4 bg-neutral-950 border border-neutral-850 rounded-lg">
-                  <span className="text-xs text-neutral-400">Platform Commission Net</span>
+                <div className="p-4 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Platform Commission Net</span>
                   <p className="text-lg font-bold text-amber-400 mt-1">
                     {formatINR(statement.ledger_balances.platform_commission_net)}
                   </p>
                   <p className="text-[11px] text-neutral-500 mt-0.5">Contractual platform fee allocation</p>
                 </div>
 
-                <div className="p-4 bg-neutral-950 border border-neutral-850 rounded-lg">
-                  <span className="text-xs text-neutral-400">Owner Payable Net</span>
+                <div className="p-4 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Owner Payable Net</span>
                   <p className="text-lg font-bold text-neutral-200 mt-1">
                     {formatINR(Math.abs(statement.ledger_balances.owner_payable_net))}
                   </p>
@@ -265,31 +265,31 @@ export default function MasterOwnerPayouts() {
 
             {/* Payouts Status */}
             <div>
-              <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
+              <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
                 Payout Settlement Lifecycle
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div className="p-4 bg-neutral-950 border border-neutral-850 rounded-lg">
-                  <span className="text-xs text-neutral-400">Outstanding Payable</span>
-                  <p className="text-base font-bold text-neutral-100 mt-1">
+                <div className="p-4 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Outstanding Payable</span>
+                  <p className="text-base font-bold text-neutral-900 dark:text-neutral-100 mt-1">
                     {formatINR(statement.payouts.outstanding_payable_minor)}
                   </p>
                 </div>
-                <div className="p-4 bg-neutral-950 border border-neutral-850 rounded-lg">
-                  <span className="text-xs text-neutral-400">Planned In-Flight</span>
+                <div className="p-4 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Planned In-Flight</span>
                   <p className="text-base font-bold text-blue-400 mt-1">
                     {formatINR(statement.payouts.planned_in_flight_minor)}
                   </p>
                 </div>
-                <div className="p-4 bg-neutral-950 border border-neutral-850 rounded-lg">
-                  <span className="text-xs text-neutral-400">Settled Payouts</span>
+                <div className="p-4 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Settled Payouts</span>
                   <p className="text-base font-bold text-neutral-200 mt-1">
                     {formatINR(statement.payouts.settled_minor)}
                   </p>
                 </div>
-                <div className="p-4 bg-neutral-950 border border-neutral-850 rounded-lg">
-                  <span className="text-xs text-neutral-400">Owner Receivable</span>
-                  <p className="text-base font-bold text-neutral-400 mt-1">
+                <div className="p-4 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Owner Receivable</span>
+                  <p className="text-base font-bold text-neutral-500 dark:text-neutral-400 mt-1">
                     {formatINR(statement.payouts.owner_receivable_minor)}
                   </p>
                 </div>
@@ -300,44 +300,44 @@ export default function MasterOwnerPayouts() {
       </div>
 
       {/* Register Payout Account */}
-      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl">
-        <h2 className="text-sm font-bold text-neutral-100 mb-2 flex items-center gap-2">
+      <div className="p-6 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+        <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-2 flex items-center gap-2">
           <CreditCard className="w-4 h-4 text-neutral-200" />
           Payout Banking Account
         </h2>
-        <p className="text-xs text-neutral-400 mb-4">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
           Register an authorized settlement account for receiving planned owner payouts.
         </p>
         <form onSubmit={handleRegisterAccount} className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-neutral-300 mb-1">Provider</label>
+            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Provider</label>
             <input
               type="text"
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
-              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs"
+              className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-neutral-900 dark:text-neutral-100 text-xs"
               placeholder="e.g. razorpay"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-neutral-300 mb-1">Provider Account ID</label>
+            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Provider Account ID</label>
             <input
               type="text"
               required
               value={accId}
               onChange={(e) => setAccId(e.target.value)}
-              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs"
+              className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-neutral-900 dark:text-neutral-100 text-xs"
               placeholder="acc_123456789"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-neutral-300 mb-1">Masked Bank Label</label>
+            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Masked Bank Label</label>
             <input
               type="text"
               required
               value={bankLabel}
               onChange={(e) => setBankLabel(e.target.value)}
-              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs"
+              className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-neutral-900 dark:text-neutral-100 text-xs"
               placeholder="HDFC Bank •••• 4092"
             />
           </div>
@@ -345,7 +345,7 @@ export default function MasterOwnerPayouts() {
             <button
               type="submit"
               disabled={registering}
-              className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-100 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+              className="px-4 py-2 bg-neutral-200/50 dark:bg-neutral-800 hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100 rounded-lg text-xs font-semibold transition disabled:opacity-50"
             >
               {registering ? 'Registering...' : 'Register Settlement Account'}
             </button>

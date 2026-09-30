@@ -199,7 +199,7 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   if (loading) {
-    return <div className="text-xs text-slate-400">Loading venue configurations...</div>;
+    return <div className="text-xs text-neutral-400">Loading venue configurations...</div>;
   }
 
   if (!turf) {
@@ -217,24 +217,24 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
         <div>
           <Link
             href="/master/turfs"
-            className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 mb-2 transition"
+            className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 mb-2 transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back to Turf Portfolio
           </Link>
-          <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
-            <Building2 className="w-6 h-6 text-emerald-400" />
+          <h1 className="text-2xl font-bold text-neutral-100 flex items-center gap-2">
+            <Building2 className="w-6 h-6 text-neutral-200" />
             {turf.name}
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-neutral-400 mt-1">
             {turf.address_text}, {turf.city} &bull; Status:{' '}
-            <span className="text-emerald-400 uppercase font-semibold">{turf.approval_status}</span>
+            <span className="text-neutral-200 uppercase font-semibold">{turf.approval_status}</span>
           </p>
         </div>
       </div>
 
       {/* Alerts */}
       {successMsg && (
-        <div className="p-4 rounded-xl text-xs flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+        <div className="p-4 rounded-xl text-xs flex items-center gap-2 bg-neutral-900 dark:bg-white/10 border border-neutral-900 dark:border-white/20 text-neutral-200">
           <CheckCircle className="w-4 h-4 shrink-0" />
           <span>{successMsg}</span>
         </div>
@@ -248,8 +248,8 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
       )}
 
       {/* Resource Selection Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-        <span className="text-xs text-slate-400 font-semibold mr-2 flex items-center gap-1">
+      <div className="flex items-center gap-2 border-b border-neutral-800 pb-3">
+        <span className="text-xs text-neutral-400 font-semibold mr-2 flex items-center gap-1">
           <Layers className="w-3.5 h-3.5" /> Courts:
         </span>
         {turf.resources.map((res) => (
@@ -259,8 +259,8 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
             onClick={() => handleSelectResource(res.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
               selectedResourceId === res.id
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                ? 'bg-neutral-600 text-white shadow-md'
+                : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
             }`}
           >
             {res.name}
@@ -269,14 +269,14 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Section 1: Operating Hours Configuration */}
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
           <div>
-            <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-neutral-200" />
               Operating Hours & Auto-Slot Generation
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-neutral-400 mt-0.5">
               Updating operating hours regenerates playable booking slots for the next 14 days.
             </p>
           </div>
@@ -284,21 +284,21 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Opens At (IST)</label>
+            <label className="block text-xs font-semibold text-neutral-300 mb-1">Opens At (IST)</label>
             <input
               type="time"
               value={openTime}
               onChange={(e) => setOpenTime(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Closes At (IST)</label>
+            <label className="block text-xs font-semibold text-neutral-300 mb-1">Closes At (IST)</label>
             <input
               type="time"
               value={closeTime}
               onChange={(e) => setCloseTime(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
             />
           </div>
         </div>
@@ -308,7 +308,7 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
             type="button"
             disabled={savingHours || !selectedResourceId}
             onClick={handleSaveHours}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-600 hover:bg-neutral-900 dark:bg-white text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
           >
             <Save className="w-4 h-4" /> {savingHours ? 'Saving & Generating Slots...' : 'Save Operating Hours'}
           </button>
@@ -316,23 +316,23 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Section 2: Pricing Rules Configuration */}
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
           <div>
-            <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <h2 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
               <BadgePercent className="w-4 h-4 text-amber-400" />
               Active Pricing Rules
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-neutral-400 mt-0.5">
               Configured pricing rules for this court. At least one active rule is required for quoting and bookings.
             </p>
           </div>
           <button
             type="button"
             onClick={() => setShowNewRuleModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-semibold transition"
           >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" /> Add Pricing Rule
+            <Plus className="w-3.5 h-3.5 text-neutral-200" /> Add Pricing Rule
           </button>
         </div>
 
@@ -344,7 +344,7 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400">
+                <tr className="border-b border-neutral-800 text-neutral-400">
                   <th className="pb-2 font-semibold">Priority</th>
                   <th className="pb-2 font-semibold">Time Window</th>
                   <th className="pb-2 font-semibold">Days</th>
@@ -352,24 +352,24 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
                   <th className="pb-2 font-semibold">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-neutral-800/50">
                 {pricingRules.map((rule) => (
-                  <tr key={rule.id} className="hover:bg-slate-800/30">
-                    <td className="py-2.5 font-mono text-slate-300">P{rule.priority}</td>
-                    <td className="py-2.5 text-slate-200">
+                  <tr key={rule.id} className="hover:bg-neutral-800/30">
+                    <td className="py-2.5 font-mono text-neutral-300">P{rule.priority}</td>
+                    <td className="py-2.5 text-neutral-200">
                       {rule.starts_local} - {rule.ends_local}
                     </td>
-                    <td className="py-2.5 text-slate-400">
+                    <td className="py-2.5 text-neutral-400">
                       {rule.iso_weekdays.length === 7 ? 'All Week' : `${rule.iso_weekdays.length} days`}
                     </td>
-                    <td className="py-2.5 font-medium text-emerald-400">
+                    <td className="py-2.5 font-medium text-neutral-200">
                       {formatINR(rule.amount_per_increment_minor)}
                     </td>
                     <td className="py-2.5">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         rule.active
-                          ? 'bg-emerald-500/10 text-emerald-400'
-                          : 'bg-slate-800 text-slate-400'
+                          ? 'bg-neutral-900 dark:bg-white/10 text-neutral-200'
+                          : 'bg-neutral-800 text-neutral-400'
                       }`}>
                         {rule.active ? 'Active' : 'Disabled'}
                       </span>
@@ -385,19 +385,19 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
       {/* Modal: Add Pricing Rule */}
       {showNewRuleModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4">
-            <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-              <BadgePercent className="w-4 h-4 text-emerald-400" />
+          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-md w-full space-y-4">
+            <h3 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
+              <BadgePercent className="w-4 h-4 text-neutral-200" />
               Add Pricing Rule
             </h3>
 
             <form onSubmit={handleCreatePricingRule} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-neutral-300 mb-1">
                   Rate Per Increment (Minor Units / Paise)
                 </label>
                 <div className="relative">
-                  <IndianRupee className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
+                  <IndianRupee className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-3" />
                   <input
                     type="number"
                     step="1000"
@@ -405,61 +405,61 @@ export default function TurfDetailPage({ params }: { params: Promise<{ id: strin
                     required
                     value={ruleAmountMinor}
                     onChange={(e) => setRuleAmountMinor(parseInt(e.target.value) || 0)}
-                    className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-emerald-500 font-mono"
+                    className="w-full pl-9 pr-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white font-mono"
                   />
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[10px] text-neutral-400 mt-1">
                   50000 minor units = {formatINR(50000)}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Starts Local</label>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">Starts Local</label>
                   <input
                     type="time"
                     required
                     value={ruleStarts}
                     onChange={(e) => setRuleStarts(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Ends Local</label>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1">Ends Local</label>
                   <input
                     type="time"
                     required
                     value={ruleEnds}
                     onChange={(e) => setRuleEnds(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Priority</label>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1">Priority</label>
                 <input
                   type="number"
                   min="0"
                   max="100"
                   value={rulePriority}
                   onChange={(e) => setRulePriority(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-800">
                 <button
                   type="button"
                   onClick={() => setShowNewRuleModal(false)}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition"
+                  className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg text-xs font-semibold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingRule}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
+                  className="px-4 py-1.5 bg-neutral-600 hover:bg-neutral-900 dark:bg-white text-white rounded-lg text-xs font-semibold transition disabled:opacity-50"
                 >
                   {savingRule ? 'Saving...' : 'Create Rule'}
                 </button>

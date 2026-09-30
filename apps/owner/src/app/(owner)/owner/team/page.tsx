@@ -189,8 +189,8 @@ export default function MasterOwnerTeam() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-100">Staff & Invite Management</h1>
-          <p className="text-xs text-neutral-400 mt-1">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Staff & Invite Management</h1>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
             Manage employee access, invite team members, and configure turf operational capabilities.
           </p>
         </div>
@@ -211,7 +211,7 @@ export default function MasterOwnerTeam() {
 
       {/* Generated Invite Link Banner */}
       {newInviteLink && (
-        <div className="p-4 bg-neutral-900 border border-neutral-900 dark:border-white/30 rounded-xl space-y-2">
+        <div className="p-4 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-900 dark:border-white/30 rounded-xl space-y-2">
           <p className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4" /> Invitation Link Generated
           </p>
@@ -220,7 +220,7 @@ export default function MasterOwnerTeam() {
               type="text"
               readOnly
               value={newInviteLink}
-              className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs font-mono text-neutral-300 focus:outline-none"
+              className="flex-1 px-3 py-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs font-mono text-neutral-700 dark:text-neutral-300 focus:outline-none"
             />
             <button
               type="button"
@@ -235,10 +235,10 @@ export default function MasterOwnerTeam() {
       )}
 
       {/* Staff Roster */}
-      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl">
-        <h2 className="text-sm font-bold text-neutral-100 mb-4">Active Staff Members</h2>
+      <div className="p-6 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+        <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-4">Active Staff Members</h2>
         {loading ? (
-          <div className="text-xs text-neutral-400">Loading staff roster...</div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading staff roster...</div>
         ) : employees.length === 0 ? (
           <div className="text-xs text-neutral-500 py-4 text-center">
             No employees currently affiliated. Click Invite Staff Member to add staff.
@@ -249,14 +249,14 @@ export default function MasterOwnerTeam() {
               <div key={emp.id} className="py-4 flex items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-xs font-semibold text-neutral-200">User ID: {emp.user_id}</p>
+                    <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">User ID: {emp.user_id}</p>
                     <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
                       emp.status === 'active' ? 'bg-neutral-900 dark:bg-white/10 text-neutral-200' : 'bg-red-500/10 text-red-400'
                     }`}>
                       {emp.status}
                     </span>
                   </div>
-                  <p className="text-[11px] text-neutral-400 mt-1">
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
                     Assignments: {emp.employee_turf_assignments?.length || 0} Turfs
                   </p>
                 </div>
@@ -264,7 +264,7 @@ export default function MasterOwnerTeam() {
                   <button
                     type="button"
                     onClick={() => handleOpenEditAssignments(emp)}
-                    className="p-1.5 text-neutral-400 hover:text-neutral-200 transition"
+                    className="p-1.5 text-neutral-500 dark:text-neutral-400 hover:text-neutral-200 transition"
                     title="Edit Assignments"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -273,7 +273,7 @@ export default function MasterOwnerTeam() {
                     type="button"
                     onClick={() => handleDisable(emp.id)}
                     disabled={emp.status !== 'active'}
-                    className="p-1.5 text-neutral-400 hover:text-red-400 disabled:opacity-30 transition"
+                    className="p-1.5 text-neutral-500 dark:text-neutral-400 hover:text-red-400 disabled:opacity-30 transition"
                     title="Disable Employee"
                   >
                     <Ban className="w-4 h-4" />
@@ -286,8 +286,8 @@ export default function MasterOwnerTeam() {
       </div>
 
       {/* Pending Invites */}
-      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl">
-        <h2 className="text-sm font-bold text-neutral-100 mb-4">Pending Employee Invitations</h2>
+      <div className="p-6 bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl">
+        <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-4">Pending Employee Invitations</h2>
         {invites.length === 0 ? (
           <div className="text-xs text-neutral-500 py-4 text-center">
             No pending employee invites.
@@ -295,9 +295,9 @@ export default function MasterOwnerTeam() {
         ) : (
           <div className="divide-y divide-neutral-800">
             {invites.map((inv: any) => (
-              <div key={inv.id} className="py-3 flex items-center justify-between text-xs">
+              <div key={inv.invite_id} className="py-3 flex items-center justify-between text-xs">
                 <div>
-                  <p className="font-semibold text-neutral-200">{inv.email}</p>
+                  <p className="font-semibold text-neutral-800 dark:text-neutral-200">{inv.email}</p>
                   <p className="text-[11px] text-neutral-500">Expires: {new Date(inv.expires_at).toLocaleDateString()}</p>
                 </div>
                 <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 text-[10px] rounded uppercase font-bold">
@@ -312,30 +312,30 @@ export default function MasterOwnerTeam() {
       {/* Invite Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
-            <h3 className="text-base font-bold text-neutral-100">Invite Staff Member</h3>
+          <div className="w-full max-w-lg bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">Invite Staff Member</h3>
             <form onSubmit={handleInvite} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">Staff Email</label>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Staff Email</label>
                 <input
                   type="email"
                   required
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="staff@example.com"
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                  className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-neutral-900 dark:text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
                   Enforced Capabilities ({selectedCaps.length} selected)
                 </label>
-                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-neutral-950 border border-neutral-850 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
                   {RECONCILED_CAPABILITIES.map((cap) => {
                     const isChecked = selectedCaps.includes(cap.code);
                     return (
-                      <label key={cap.code} className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+                      <label key={cap.code} className="flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -346,7 +346,7 @@ export default function MasterOwnerTeam() {
                               setSelectedCaps(selectedCaps.filter((c) => c !== cap.code));
                             }
                           }}
-                          className="rounded border-neutral-800 text-neutral-900 dark:text-white focus:ring-neutral-900 dark:ring-white"
+                          className="rounded border-neutral-300 dark:border-neutral-800 text-neutral-900 dark:text-white focus:ring-neutral-900 dark:ring-white"
                         />
                         <span className="truncate">{cap.label}</span>
                       </label>
@@ -355,11 +355,11 @@ export default function MasterOwnerTeam() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-neutral-800">
+              <div className="flex justify-end gap-2 pt-3 border-t border-neutral-300 dark:border-neutral-800">
                 <button
                   type="button"
                   onClick={() => setShowInviteModal(false)}
-                  className="px-4 py-2 bg-neutral-800 text-neutral-300 rounded-lg text-xs font-semibold hover:bg-neutral-700"
+                  className="px-4 py-2 bg-neutral-200/50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-lg text-xs font-semibold hover:bg-neutral-700"
                 >
                   Cancel
                 </button>
@@ -379,15 +379,15 @@ export default function MasterOwnerTeam() {
       {/* Edit Assignments Modal */}
       {editingEmployee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
-            <h3 className="text-base font-bold text-neutral-100">Edit Staff Assignments</h3>
+          <div className="w-full max-w-lg bg-neutral-200/50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-xl p-6 space-y-4">
+            <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">Edit Staff Assignments</h3>
             <form onSubmit={handleSaveAssignments} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">Target Venue</label>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Target Venue</label>
                 <select
                   value={editTurfId}
                   onChange={(e) => setEditTurfId(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
+                  className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-neutral-900 dark:text-neutral-100 text-xs focus:outline-none focus:border-neutral-900 dark:border-white"
                 >
                   {turfs.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -398,14 +398,14 @@ export default function MasterOwnerTeam() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
                   Assigned Capabilities ({editCaps.length} selected)
                 </label>
-                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-neutral-950 border border-neutral-850 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-neutral-100 dark:bg-neutral-950 border border-neutral-850 rounded-lg">
                   {RECONCILED_CAPABILITIES.map((cap) => {
                     const isChecked = editCaps.includes(cap.code);
                     return (
-                      <label key={cap.code} className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+                      <label key={cap.code} className="flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -416,7 +416,7 @@ export default function MasterOwnerTeam() {
                               setEditCaps(editCaps.filter((c) => c !== cap.code));
                             }
                           }}
-                          className="rounded border-neutral-800 text-neutral-900 dark:text-white focus:ring-neutral-900 dark:ring-white"
+                          className="rounded border-neutral-300 dark:border-neutral-800 text-neutral-900 dark:text-white focus:ring-neutral-900 dark:ring-white"
                         />
                         <span className="truncate">{cap.label}</span>
                       </label>
@@ -425,11 +425,11 @@ export default function MasterOwnerTeam() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-neutral-800">
+              <div className="flex justify-end gap-2 pt-3 border-t border-neutral-300 dark:border-neutral-800">
                 <button
                   type="button"
                   onClick={() => setEditingEmployee(null)}
-                  className="px-4 py-2 bg-neutral-800 text-neutral-300 rounded-lg text-xs font-semibold hover:bg-neutral-700"
+                  className="px-4 py-2 bg-neutral-200/50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-lg text-xs font-semibold hover:bg-neutral-700"
                 >
                   Cancel
                 </button>
