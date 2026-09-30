@@ -12,7 +12,7 @@ export function createBrowserClient(
 ): SupabaseClient {
   const cfg = PORTAL_CONFIGS[portalKey];
   const url = customUrl || process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:54321';
-  const anonKey = customAnonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const anonKey = customAnonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
 
   return createSupabaseBrowserClient(url, anonKey, {
     cookieOptions: {

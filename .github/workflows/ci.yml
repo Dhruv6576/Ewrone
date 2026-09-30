@@ -114,6 +114,9 @@ jobs:
         run: node scripts/verify_stale_contract_guard.mjs
 
       - name: Typecheck Applications
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
         run: |
           npm --prefix apps/player run build
           npm --prefix apps/owner run build
