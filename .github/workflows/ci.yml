@@ -248,14 +248,14 @@ jobs:
 
       - name: Link Supabase Staging
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_STAGING_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
         run: npx supabase link --project-ref ${{ secrets.SUPABASE_STAGING_PROJECT_REF }}
 
       - name: Push Database Migrations (Staging)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_STAGING_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
         run: npx supabase db push
 
       - name: Synchronize Staging Worker Config
@@ -267,7 +267,7 @@ jobs:
 
       - name: Deploy Edge Functions (Staging)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_STAGING_ACCESS_TOKEN }}
         run: |
           npx supabase functions deploy checkout
           npx supabase functions deploy payment-webhook --no-verify-jwt
@@ -313,15 +313,15 @@ jobs:
       - name: Link Supabase Production
         if: steps.check-prod.outputs.configured == 'true'
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_PROD_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
         run: npx supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
 
       - name: Push Database Migrations (Production)
         if: steps.check-prod.outputs.configured == 'true'
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_PROD_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
         run: npx supabase db push
 
       - name: Synchronize Production Worker Config
@@ -335,7 +335,7 @@ jobs:
       - name: Deploy Edge Functions (Production)
         if: steps.check-prod.outputs.configured == 'true'
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_PROD_ACCESS_TOKEN }}
         run: |
           npx supabase functions deploy checkout
           npx supabase functions deploy payment-webhook --no-verify-jwt
