@@ -37,8 +37,8 @@ export default function HoldTimer({ expiresAt, onExpire }: HoldTimerProps) {
 
   if (secondsRemaining <= 0) {
     return (
-      <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 text-red-300 text-xs font-semibold flex items-center justify-center gap-2">
-        <AlertTriangle className="w-4 h-4 text-red-400" />
+      <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-500/40 text-red-700 dark:text-red-300 text-xs font-semibold flex items-center justify-center gap-2">
+        <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
         <span>Hold Expired — Slot has been released back to inventory</span>
       </div>
     );
@@ -48,12 +48,12 @@ export default function HoldTimer({ expiresAt, onExpire }: HoldTimerProps) {
     <div
       className={`p-3.5 rounded-xl border flex items-center justify-between transition-all ${
         isUrgent
-          ? 'bg-red-950/40 border-red-500/50 text-red-300 hold-pulse'
-          : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+          ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-500/50 dark:text-red-300 hold-pulse'
+          : 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-500/40 dark:text-emerald-300'
       }`}
     >
       <div className="flex items-center gap-2">
-        <Clock className={`w-4 h-4 ${isUrgent ? 'text-red-400' : 'text-emerald-400'}`} />
+        <Clock className={`w-4 h-4 ${isUrgent ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
         <span className="text-xs font-medium">Slot Exclusively Reserved For You</span>
       </div>
       <div className="font-mono text-base font-bold tracking-wider">
