@@ -80,18 +80,18 @@ function renderCapabilityDenied({
           <ShieldAlert className="w-7 h-7" />
         </div>
         <h2 className="text-xl font-bold text-white mb-2">Access Restricted</h2>
-        <p className="text-sm text-slate-300 mb-5 leading-relaxed">
+        <p className="text-sm text-neutral-300 mb-5 leading-relaxed">
           Your account ({email || 'unknown'}) lacks permission for this area.
         </p>
 
-        <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 text-left text-xs space-y-2.5 mb-6">
+        <div className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-800 text-left text-xs space-y-2.5 mb-6">
           <div className="flex items-start justify-between gap-2">
-            <span className="text-slate-400 font-medium shrink-0">Unmet requirement:</span>
+            <span className="text-neutral-400 font-medium shrink-0">Unmet requirement:</span>
             <span className="text-amber-400 font-semibold text-right">{requirement}</span>
           </div>
-          <div className="pt-2 border-t border-slate-800/80">
-            <span className="text-slate-400 font-medium block mb-1">Your capabilities:</span>
-            <span className="text-slate-200 font-mono text-[11px] break-all bg-slate-900 px-2 py-1 rounded-lg block">
+          <div className="pt-2 border-t border-neutral-800/80">
+            <span className="text-neutral-400 font-medium block mb-1">Your capabilities:</span>
+            <span className="text-neutral-200 font-mono text-[11px] break-all bg-neutral-900 px-2 py-1 rounded-lg block">
               {capabilities.length > 0 ? capabilities.join(', ') : 'none'}
             </span>
           </div>
@@ -100,13 +100,13 @@ function renderCapabilityDenied({
         <div className="flex flex-col gap-3">
           <Link
             href="/dashboard"
-            className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
           >
             Return to Dashboard
           </Link>
           <a
             href={process.env.NEXT_PUBLIC_PLAYER_URL || 'http://localhost:3000'}
-            className="w-full py-2 px-4 rounded-xl text-slate-400 hover:text-slate-200 text-xs font-medium transition-colors text-center"
+            className="w-full py-2 px-4 rounded-xl text-neutral-400 hover:text-neutral-200 text-xs font-medium transition-colors text-center"
           >
             Return to Player Portal (Port 3000)
           </a>

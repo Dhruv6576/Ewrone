@@ -30,7 +30,7 @@ export default async function MasterOwnerLayout({
   const accounts = context?.master_owner_accounts || [];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col md:flex-row">
       <MasterOwnerSidebar
         accounts={accounts}
         userEmail={user.email || ''}
@@ -40,9 +40,9 @@ export default async function MasterOwnerLayout({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="hidden md:flex items-center justify-between px-8 py-4 bg-slate-900/50 border-b border-slate-800 backdrop-blur">
+        <header className="hidden md:flex items-center justify-between px-8 py-4 bg-neutral-900/50 border-b border-neutral-800 backdrop-blur">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-medium">Master Owner Administration</span>
+            <span className="text-xs text-neutral-400 font-medium">Master Owner Administration</span>
           </div>
           <div className="flex items-center gap-4">
             <NotificationBell />

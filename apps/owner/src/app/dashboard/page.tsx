@@ -19,9 +19,7 @@ export default async function DashboardRedirectPage() {
   const { data: context } = await getMyContext(supabase);
   const role = resolveUserRole(context);
 
-  if (role.canAccessMasterOwner || role.isPlatformAdmin) {
-    redirect('/master/dashboard');
-  } else if (role.canAccessStaffOwner) {
+  if (role.canAccessMasterOwner || role.isPlatformAdmin || role.canAccessStaffOwner) {
     redirect('/owner/dashboard');
   } else {
     redirect('/login?reason=forbidden');

@@ -56,17 +56,17 @@ function InviteContent() {
 
   if (!token) {
     return (
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full text-center space-y-4">
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl max-w-md w-full text-center space-y-4">
         <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mx-auto">
           <AlertCircle className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-slate-100">Invalid Invitation Link</h2>
-        <p className="text-xs text-slate-400">
+        <h2 className="text-base font-bold text-neutral-100">Invalid Invitation Link</h2>
+        <p className="text-xs text-neutral-400">
           This invitation link is missing a valid token. Please check your invitation email or contact your venue administrator.
         </p>
         <Link
           href="/login"
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-semibold transition"
         >
           Return to Login
         </Link>
@@ -76,12 +76,12 @@ function InviteContent() {
 
   if (loading || accepting) {
     return (
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mx-auto animate-pulse">
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl max-w-md w-full text-center space-y-4">
+        <div className="w-12 h-12 rounded-full bg-neutral-900 dark:bg-white/10 border border-neutral-900 dark:border-white/20 flex items-center justify-center text-neutral-200 mx-auto animate-pulse">
           <ShieldCheck className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-slate-100">Processing Invitation</h2>
-        <p className="text-xs text-slate-400">
+        <h2 className="text-base font-bold text-neutral-100">Processing Invitation</h2>
+        <p className="text-xs text-neutral-400">
           {accepting ? 'Claiming your staff access credentials...' : 'Verifying invitation token...'}
         </p>
       </div>
@@ -90,17 +90,17 @@ function InviteContent() {
 
   if (success) {
     return (
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mx-auto">
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl max-w-md w-full text-center space-y-4">
+        <div className="w-12 h-12 rounded-full bg-neutral-900 dark:bg-white/10 border border-neutral-900 dark:border-white/20 flex items-center justify-center text-neutral-200 mx-auto">
           <CheckCircle2 className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-slate-100">Invitation Accepted!</h2>
-        <p className="text-xs text-slate-400">
+        <h2 className="text-base font-bold text-neutral-100">Invitation Accepted!</h2>
+        <p className="text-xs text-neutral-400">
           Your staff credentials have been activated. Redirecting you to the operations console...
         </p>
         <Link
           href="/owner/dashboard"
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition"
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-600 hover:bg-neutral-900 dark:bg-white text-white rounded-lg text-xs font-semibold transition"
         >
           Go to Operations Console <ArrowRight className="w-4 h-4" />
         </Link>
@@ -110,16 +110,16 @@ function InviteContent() {
 
   if (error) {
     return (
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full text-center space-y-4">
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl max-w-md w-full text-center space-y-4">
         <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mx-auto">
           <AlertCircle className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-slate-100">Invitation Error</h2>
+        <h2 className="text-base font-bold text-neutral-100">Invitation Error</h2>
         <p className="text-xs text-red-300">{error}</p>
         <div className="pt-2 flex justify-center gap-2">
           <Link
             href="/login"
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
+            className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-semibold transition"
           >
             Sign In with Another Account
           </Link>
@@ -131,18 +131,18 @@ function InviteContent() {
   if (!authenticated) {
     const loginUrl = `/login?redirect=${encodeURIComponent(`/invite?token=${token}`)}`;
     return (
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mx-auto">
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl max-w-md w-full text-center space-y-4">
+        <div className="w-12 h-12 rounded-full bg-neutral-900 dark:bg-white/10 border border-neutral-900 dark:border-white/20 flex items-center justify-center text-neutral-200 mx-auto">
           <ShieldCheck className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-slate-100">Staff Invitation Received</h2>
-        <p className="text-xs text-slate-400">
+        <h2 className="text-base font-bold text-neutral-100">Staff Invitation Received</h2>
+        <p className="text-xs text-neutral-400">
           You have been invited to join Box Codex staff operations. Sign in or create an account to claim your access.
         </p>
         <div className="pt-2">
           <Link
             href={loginUrl}
-            className="inline-flex items-center justify-center gap-2 w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition shadow-lg shadow-emerald-950"
+            className="inline-flex items-center justify-center gap-2 w-full py-2.5 bg-neutral-600 hover:bg-neutral-900 dark:bg-white text-white rounded-lg text-xs font-semibold transition shadow-lg shadow-neutral-950"
           >
             <LogIn className="w-4 h-4" /> Sign In to Accept Invitation
           </Link>
@@ -156,8 +156,8 @@ function InviteContent() {
 
 export default function InvitePage() {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-      <Suspense fallback={<div className="text-xs text-slate-400">Loading invitation...</div>}>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
+      <Suspense fallback={<div className="text-xs text-neutral-400">Loading invitation...</div>}>
         <InviteContent />
       </Suspense>
     </div>

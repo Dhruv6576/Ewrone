@@ -1,8 +1,34 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  /* Spotify Green Overrides for existing green classes */
+  --color-green-400: #1ED760;
+  --color-green-500: #1DB954;
+  --color-green-600: #1aa34a;
+}
+
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #F8FAFC;
+  --foreground: #020617;
+  --primary: #1DB954;
+  /* Spotify green for light mode */
+  --primary-foreground: #FFFFFF;
+}
+
+.dark {
+  --background: #0A0A0A;
+  /* Classic true dark background */
+  --foreground: #F8FAFC;
+  --primary: #1ED760;
+  /* Bright Spotify green for dark mode */
+  --primary-foreground: #000000;
 }
 
 body {
@@ -11,7 +37,79 @@ body {
 }
 
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 20px -4px rgba(22, 163, 74, 0.15);
+  /* Light mode glow */
+}
+
+.dark .glass-panel {
+  background: rgba(23, 23, 23, 0.75);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dark .glass-panel:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 24px -4px color-mix(in srgb, var(--primary) 25%, transparent);
+  /* Neon green glow using the primary variable */
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.3);
+  border-radius: 10px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(100, 100, 100, 0.3);
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background: var(--primary);
+}
+
+/* Theme transition styles */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2147483646;
+}
+
+.glass-panel-static:hover {
+  border-color: inherit !important;
+  box-shadow: none !important;
+}
+
+.glass-panel.no-glow:hover {
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: none;
+}
+.dark .glass-panel.no-glow:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }

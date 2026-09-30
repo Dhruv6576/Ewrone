@@ -91,7 +91,7 @@ export default function MasterOwnerDashboard() {
   }, []);
 
   if (loading) {
-    return <div className="text-xs text-slate-400">Loading portfolio analytics...</div>;
+    return <div className="text-xs text-neutral-400">Loading portfolio analytics...</div>;
   }
 
   if (error) {
@@ -111,58 +111,58 @@ export default function MasterOwnerDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-100">Portfolio Executive Dashboard</h1>
-        <p className="text-xs text-slate-400 mt-1">
+        <h1 className="text-2xl font-bold text-neutral-100">Portfolio Executive Dashboard</h1>
+        <p className="text-xs text-neutral-400 mt-1">
           High-level operational performance and financial settlements across all venues.
         </p>
       </div>
 
       {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
             <span className="text-xs font-semibold">Total Venues</span>
-            <Building2 className="w-4 h-4 text-emerald-400" />
+            <Building2 className="w-4 h-4 text-neutral-200" />
           </div>
-          <p className="text-2xl font-bold text-slate-100">{turfCount}</p>
-          <p className="text-[11px] text-emerald-400 mt-1">Active Arenas in Portfolio</p>
+          <p className="text-2xl font-bold text-neutral-100">{turfCount}</p>
+          <p className="text-[11px] text-neutral-200 mt-1">Active Arenas in Portfolio</p>
         </div>
 
-        <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
             <span className="text-xs font-semibold">Monthly Bookings</span>
             <CalendarCheck className="w-4 h-4 text-blue-400" />
           </div>
-          <p className="text-2xl font-bold text-slate-100">{totalBookings}</p>
-          <p className="text-[11px] text-slate-400 mt-1">Confirmed player reservations</p>
+          <p className="text-2xl font-bold text-neutral-100">{totalBookings}</p>
+          <p className="text-[11px] text-neutral-400 mt-1">Confirmed player reservations</p>
         </div>
 
-        <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
             <span className="text-xs font-semibold">Gross Revenue</span>
             <IndianRupee className="w-4 h-4 text-amber-400" />
           </div>
-          <p className="text-2xl font-bold text-slate-100">{formatINR(grossRevenue)}</p>
-          <p className="text-[11px] text-slate-400 mt-1">Platform gross transaction volume</p>
+          <p className="text-2xl font-bold text-neutral-100">{formatINR(grossRevenue)}</p>
+          <p className="text-[11px] text-neutral-400 mt-1">Platform gross transaction volume</p>
         </div>
 
-        <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="p-5 bg-neutral-900 border border-neutral-800 rounded-xl">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
             <span className="text-xs font-semibold">Net Settlement</span>
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <TrendingUp className="w-4 h-4 text-neutral-200" />
           </div>
-          <p className="text-2xl font-bold text-emerald-400">{formatINR(netSettlement)}</p>
-          <p className="text-[11px] text-slate-400 mt-1">After platform commissions</p>
+          <p className="text-2xl font-bold text-neutral-200">{formatINR(netSettlement)}</p>
+          <p className="text-[11px] text-neutral-400 mt-1">After platform commissions</p>
         </div>
       </div>
 
       {/* Venue Breakdown */}
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-xl">
-        <h2 className="text-sm font-bold text-slate-100 mb-4">Venue Performance Overview</h2>
+      <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl">
+        <h2 className="text-sm font-bold text-neutral-100 mb-4">Venue Performance Overview</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-slate-400">
+              <tr className="border-b border-neutral-800 text-neutral-400">
                 <th className="pb-3 font-semibold">Venue Name</th>
                 <th className="pb-3 font-semibold">Status</th>
                 <th className="pb-3 font-semibold text-right">Bookings</th>
@@ -170,28 +170,28 @@ export default function MasterOwnerDashboard() {
                 <th className="pb-3 font-semibold text-right">Net Revenue</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className="divide-y divide-neutral-800/50">
               {data?.turfs && data.turfs.length > 0 ? (
                 data.turfs.map((t) => (
-                  <tr key={t.turf_id} className="hover:bg-slate-800/20">
-                    <td className="py-3 font-medium text-slate-200">{t.turf_name}</td>
+                  <tr key={t.turf_id} className="hover:bg-neutral-800/20">
+                    <td className="py-3 font-medium text-neutral-200">{t.turf_name}</td>
                     <td className="py-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-emerald-500/10 text-emerald-400">
+                      <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-neutral-900 dark:bg-white/10 text-neutral-200">
                         {t.approval_status}
                       </span>
                     </td>
-                    <td className="py-3 text-right text-slate-300">{t.bookings_count ?? 0}</td>
-                    <td className="py-3 text-right font-medium text-slate-200">
+                    <td className="py-3 text-right text-neutral-300">{t.bookings_count ?? 0}</td>
+                    <td className="py-3 text-right font-medium text-neutral-200">
                       {formatINR(t.gross_minor ?? 0)}
                     </td>
-                    <td className="py-3 text-right font-medium text-emerald-400">
+                    <td className="py-3 text-right font-medium text-neutral-200">
                       {formatINR(t.net_minor ?? 0)}
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-slate-500">
+                  <td colSpan={5} className="py-4 text-center text-neutral-500">
                     No venues found in portfolio.
                   </td>
                 </tr>
