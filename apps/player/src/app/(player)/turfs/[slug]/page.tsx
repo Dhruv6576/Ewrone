@@ -1,15 +1,14 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { cookies } from 'next/headers';
 import { createServerClient } from '@boxcodex/shared';
-import SlotPicker from '@/components/SlotPicker';
-import { MapPin, ShieldCheck, ChevronLeft, Clock, Sparkles, Trophy } from 'lucide-react';
+import TurfDetailView, { SportItem } from '@/components/TurfDetailView';
+import { formatINR, resolveImageUrl } from '@/lib/utils';
 
 interface Props {
   params: Promise<{ slug: string }>;
 }
 
-export const revalidate = 0;
+export const revalidate = 60;
 
 export default async function TurfDetailPage({ params }: Props) {
   const { slug } = await params;
@@ -19,13 +18,21 @@ export default async function TurfDetailPage({ params }: Props) {
     redirect('/turfs/the-dugout-indiranagar');
   }
 
-  const cookieStore = await cookies();
-  const supabase = createServerClient('player', cookieStore);
+  const supabase = createServerClient('player', { getAll: () => [] });
 
-  // 1. Query turf details
+  // 1. Query turf details with photos, settings, resources, pricing rules, and operating hours in a single roundtrip
   const { data: turf, error: turfErr } = await supabase
     .from('turfs')
-    .select('id, name, slug, city, address_text, description, timezone, approval_status')
+    .select(`
+      id, name, slug, city, address_text, description, timezone, approval_status,
+      turf_photos (id, storage_path, sort_order, published),
+      turf_booking_settings (advance_fixed_per_slot_minor, advance_basis_points),
+      resources (
+        id, name, booking_increment_minutes, minimum_duration_minutes, active,
+        pricing_rules (resource_id, amount_per_increment_minor, active),
+        operating_hours (opens_at, closes_at)
+      )
+    `)
     .eq('slug', slug)
     .single();
 
@@ -33,23 +40,20 @@ export default async function TurfDetailPage({ params }: Props) {
     notFound();
   }
 
-  // 2. Query bookable resources for this turf
-  const { data: resources, error: resErr } = await supabase
-    .from('resources')
-    .select('id, name, booking_increment_minutes, minimum_duration_minutes')
-    .eq('turf_id', turf.id)
-    .eq('active', true)
-    .order('name', { ascending: true });
+  // 2. Extract active bookable resources
+  const resources = ((turf.resources as any[]) || [])
+    .filter((r) => r.active !== false)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-  if (resErr || !resources || resources.length === 0) {
+  if (resources.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <div className="glass-panel p-8 rounded-2xl">
+        <div className="glass-panel p-8 rounded-2xl border border-slate-800 bg-[#0c1017]">
           <h2 className="text-xl font-bold text-white">No active courts available</h2>
           <p className="text-sm text-slate-400 mt-2">
             This venue has no bookable resources published at the moment.
           </p>
-          <Link href="/" className="inline-block mt-4 text-xs font-semibold text-emerald-400 hover:underline">
+          <Link href="/explore" className="inline-block mt-4 text-xs font-semibold text-[#00df81] hover:underline">
             ← Browse other turfs
           </Link>
         </div>
@@ -57,88 +61,90 @@ export default async function TurfDetailPage({ params }: Props) {
     );
   }
 
+  // 3. Extract pricing rules and operating hours directly from nested resource payload (zero extra roundtrips)
+  const allPricingRules = resources.flatMap((r) => r.pricing_rules || [])
+    .filter((rule: any) => rule.active && rule.amount_per_increment_minor)
+    .sort((a: any, b: any) => Number(a.amount_per_increment_minor) - Number(b.amount_per_increment_minor));
+
+  const allHours = resources.flatMap((r) => r.operating_hours || []);
+
+  let openingHoursText = 'Open 24/7';
+  if (allHours.length > 0) {
+    const firstHours = allHours[0];
+    const opens = firstHours.opens_at ? firstHours.opens_at.slice(0, 5) : '06:00';
+    const closes = firstHours.closes_at ? firstHours.closes_at.slice(0, 5) : '23:00';
+    if (opens === '00:00' && (closes === '23:59' || closes === '24:00' || closes === '00:00')) {
+      openingHoursText = 'Open 24/7';
+    } else {
+      openingHoursText = `${opens} - ${closes}`;
+    }
+  }
+
+  // Calculate base price & advance
+  let basePriceFormatted = '₹1,500.00';
+  let advanceText: string | undefined = undefined;
+
+  if (allPricingRules.length > 0 && allPricingRules[0].amount_per_increment_minor) {
+    const firstRule = allPricingRules[0];
+    const firstRes = resources.find((r) => r.id === firstRule.resource_id);
+    const incMins = firstRes?.booking_increment_minutes || 60;
+    const multiplier = incMins === 30 ? 2 : 1;
+    const hourlyMinor = Number(firstRule.amount_per_increment_minor) * multiplier;
+    basePriceFormatted = formatINR(hourlyMinor);
+
+    const rawSettings = Array.isArray(turf.turf_booking_settings)
+      ? turf.turf_booking_settings[0]
+      : turf.turf_booking_settings;
+
+    if (rawSettings) {
+      if (rawSettings.advance_fixed_per_slot_minor != null && Number(rawSettings.advance_fixed_per_slot_minor) > 0) {
+        const fixedSlot = Number(rawSettings.advance_fixed_per_slot_minor);
+        const hourlyAdvance = fixedSlot * multiplier;
+        advanceText = `Advance: ${formatINR(hourlyAdvance)}/hr`;
+      } else if (rawSettings.advance_basis_points != null && Number(rawSettings.advance_basis_points) < 10000) {
+        const advMinor = Math.round((hourlyMinor * Number(rawSettings.advance_basis_points)) / 10000);
+        advanceText = `Advance: ${formatINR(advMinor)}/hr`;
+      } else {
+        advanceText = `Full Online: ${formatINR(hourlyMinor)}/hr`;
+      }
+    }
+  }
+
+  // Construct sports list
+  const sports: SportItem[] = [
+    {
+      id: 'box_cricket',
+      name: 'Box Cricket',
+      courtCount: resources.length,
+      formattedPrice: basePriceFormatted,
+      advanceText,
+      resourceId: resources[0]?.id,
+    },
+  ];
+
+  // Resolve owner photo
+  let primaryImageUrl: string | undefined = undefined;
+  if (turf.turf_photos && Array.isArray(turf.turf_photos) && turf.turf_photos.length > 0) {
+    const publishedPhotos = turf.turf_photos
+      .filter((p: any) => p.published !== false && p.storage_path)
+      .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+    if (publishedPhotos.length > 0) {
+      primaryImageUrl = resolveImageUrl(publishedPhotos[0].storage_path) || undefined;
+    }
+  }
+
+  // Amenities
+  const amenities = ['Floodlights', 'Parking', 'Seating', 'Drinking Water', 'Washroom'];
+
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Back link */}
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-emerald-400 transition-colors mb-6 group"
-      >
-        <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-        Back to Venues
-      </Link>
-
-      {/* Turf Overview Card */}
-      <div className="glass-panel rounded-3xl p-6 sm:p-8 mb-8 relative overflow-hidden">
-        {/* Glow accent */}
-        <div className="absolute -top-24 -right-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Verified Arena
-              </span>
-              <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                {turf.city}
-              </span>
-            </div>
-
-            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-              {turf.name}
-            </h1>
-
-            <p className="text-sm text-slate-300 mt-2 max-w-2xl">
-              {turf.description || 'Premier box cricket and multi-sport turf equipped with high-intensity floodlights, professional turf surface, and dedicated dugouts.'}
-            </p>
-
-            <div className="text-xs text-slate-400 mt-3 flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{turf.address_text || 'Stadium Road, Prime Sports Enclave'}</span>
-            </div>
-          </div>
-
-          {/* Quick Info Badges */}
-          <div className="flex md:flex-col gap-2 shrink-0">
-            <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-center min-w-[120px]">
-              <div className="text-[10px] text-slate-500 uppercase font-semibold">Active Courts</div>
-              <div className="text-base font-bold text-emerald-400 mt-0.5">{resources.length} Pitches</div>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-center min-w-[120px]">
-              <div className="text-[10px] text-slate-500 uppercase font-semibold">Operating Hours</div>
-              <div className="text-xs font-bold text-white mt-0.5">06:00 AM - 11:00 PM</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Amenity Pills */}
-        <div className="flex flex-wrap gap-2 mt-6 pt-5 border-t border-slate-800/80">
-          <span className="px-3 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
-            🏏 Box Cricket Pitch
-          </span>
-          <span className="px-3 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
-            💡 Stadium Floodlights
-          </span>
-          <span className="px-3 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
-            🚗 Player Parking
-          </span>
-          <span className="px-3 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
-            🚿 Changing Rooms
-          </span>
-        </div>
-      </div>
-
-      {/* Interactive Slot Picker Section */}
-      <div className="glass-panel rounded-3xl p-6 sm:p-8">
-        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-          <Clock className="w-5 h-5 text-emerald-400" />
-          Choose Court & Time Slot
-        </h2>
-
-        <SlotPicker turf={turf} resources={resources} />
-      </div>
-    </div>
+    <TurfDetailView
+      turf={turf}
+      sports={sports}
+      amenities={amenities}
+      openingHoursText={openingHoursText}
+      imageUrl={primaryImageUrl || '/images/night-cricket-ground.jpg'}
+      advanceText={advanceText}
+    />
   );
 }
